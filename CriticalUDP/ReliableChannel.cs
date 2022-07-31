@@ -9,23 +9,23 @@ namespace CriticalCrate.UDP
     [Flags]
     public enum PacketType
     {
-        Unreliable = 0,
-        Connect = 1,
-        Disconnect = 2,
-        Reliable = 4,
-        ReliableAck = Reliable | 8,
-        ReliablePacketEnd = Reliable | 16,
-        Ping = 32
+        Unreliable = 1,
+        Connect = 2,
+        Disconnect = 4,
+        Reliable = 8,
+        ReliableAck = Reliable | 16,
+        ReliablePacketEnd = Reliable | 32,
+        Ping = 64
     }
 
 //first byte
-//0 0 0 0 0 0 0 0 unreliable
-//1 0 0 0 0 0 0 0 connect
-//0 1 0 0 0 0 0 0 disconnect
-//0 0 1 0 0 0 0 0 reliable
-//0 0 1 1 0 0 0 0 ack
-//0 0 1 0 1 0 0 0 reliable packet end
-//0 0 0 0 0 1 0 0 ping
+//1 0 0 0 0 0 0 0  unreliable
+//0 1 0 0 0 0 0 0  connect
+//0 0 1 0 0 0 0 0  disconnect
+//0 0 0 1 0 0 0 0  reliable
+//0 0 0 1 1 0 0 0  ack
+//0 0 0 1 0 1 0 0  reliable packet end
+//0 0 0 0 0 0 1 0  ping
 //
 // for reliable channel:
 // 1 bytes for seq - for full packet
@@ -46,8 +46,6 @@ namespace CriticalCrate.UDP
         private ReliableOutgoingPacket _outgoingPacket;
         private ReliableIncomingPacket _incomingPacket;
 
-        private ArrayPool<byte> _arrayPool;
-
         private byte _sendSeq = 0;
         private readonly int _packetSendWindow;
         private DateTime _lastAckDate;
@@ -56,7 +54,6 @@ namespace CriticalCrate.UDP
 
         public ReliableChannel(UDPSocket socket, int packetSendWindow = 60 * 1024)
         {
-            _arrayPool = ArrayPool<byte>.Shared;
             _socket = socket;
             _packetSendWindow = packetSendWindow;
             _incomingPacket = new ReliableIncomingPacket(_socket.Mtu);
@@ -65,7 +62,7 @@ namespace CriticalCrate.UDP
 
         public void Send(EndPoint endPoint, byte[] data, int offset, int size)
         {
-            var packet = new Packet(size, _arrayPool);
+            var packet = new Packet(size, ArrayPool<byte>.Shared);
             packet.Assign(endPoint);
             packet.CopyFrom(data, offset, size);
             _sendQueue.Enqueue(packet);
@@ -86,7 +83,7 @@ namespace CriticalCrate.UDP
             {
                 if (!_outgoingPacket.HasPackets)
                     _outgoingPacket.Split(_sendSeq++, bigPacket.Data, 0, bigPacket.Position, bigPacket.EndPoint,
-                        _arrayPool);
+                        ArrayPool<byte>.Shared);
 
                 if (_outgoingPacket.IsCompleted)
                 {
@@ -140,13 +137,13 @@ namespace CriticalCrate.UDP
                 {
                     _incomingPacket.Receive(packetType, seq, ack, packet);
                     if (!_incomingPacket.IsComplete()) return;
-                    _socket.Send(ReliableIncomingPacket.CreateAckPacket(packet, _arrayPool));
+                    _socket.Send(ReliableIncomingPacket.CreateAckPacket(packet, ArrayPool<byte>.Shared));
                     _incomingPacket.Reset();
                     OnPacketReceived?.Invoke(_incomingPacket);
                 }
                 else if (_incomingPacket.Seq == -1 || oldPacket)
                 {
-                    _socket.Send(ReliableIncomingPacket.CreateAckPacket(packet, _arrayPool));
+                    _socket.Send(ReliableIncomingPacket.CreateAckPacket(packet, ArrayPool<byte>.Shared));
                 }
             }
         }
@@ -261,7 +258,7 @@ namespace CriticalCrate.UDP
             return true;
         }
 
-        public byte[] GetData()
+        public Packet GetData()
         {
             int size = 0;
             for (int i = 0; i < _partsCount; i++)
@@ -269,14 +266,14 @@ namespace CriticalCrate.UDP
                 size += _packets[i].Position - ReliableChannel.ReliableChannelHeaderSize;
             }
 
-            byte[] result = new byte[size];
+            Packet packet = new Packet(size, ArrayPool<byte>.Shared);
             int offset = 0;
             for (int i = 0; i < _partsCount; i++)
             {
-                offset += ReliableChannel.ReadData(_packets[i], result, offset);
+                offset += ReliableChannel.ReadData(_packets[i], packet.Data, offset);
             }
 
-            return result;
+            return packet;
         }
     }
 
