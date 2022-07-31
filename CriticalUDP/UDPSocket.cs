@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -17,7 +18,7 @@ namespace CriticalCrate.UDP
         private SocketAsyncEventArgs _writeEvent;
         private Socket _listenSocket;
 
-        private BlockingCollection<Packet> _packets = new BlockingCollection<Packet>();
+        private BlockingCollection<Packet> _packets;
         private SemaphoreSlim _sendSemaphore;
         private Thread _sendThread;
         private CancellationTokenSource _sendThreadCancelation;
@@ -48,9 +49,9 @@ namespace CriticalCrate.UDP
                 ProcessRead(_readEvent);
         }
 
-        public void Client()
+        public void Client(ushort port = 0)
         {
-            Listen(new IPEndPoint(IPAddress.Any, 0));
+            Listen(new IPEndPoint(IPAddress.Any, port));
         }
 
         private async void ProcessSendQueue(CancellationToken cancellationToken)
@@ -59,9 +60,9 @@ namespace CriticalCrate.UDP
             {
                 var packet = _packets.Take(cancellationToken);
                 await _sendSemaphore.WaitAsync(cancellationToken);
-                packet.CopyTo(_writeEvent.Buffer, _writeEvent.Offset);
-                _writeEvent.SetBuffer(0, packet.Data.Length);
+                _writeEvent.SetBuffer(0, packet.Position);
                 _writeEvent.RemoteEndPoint = packet.EndPoint;
+                packet.CopyTo(_writeEvent.Buffer, _writeEvent.Offset);
                 packet.Dispose();
                 if (!_listenSocket.SendToAsync(_writeEvent))
                     ProcessWrite(_writeEvent);
@@ -117,7 +118,7 @@ namespace CriticalCrate.UDP
         {
             if (e.SocketError == SocketError.Success)
             {
-                var packet = new Packet(e.BytesTransferred);
+                var packet = new Packet(e.BytesTransferred, ArrayPool<byte>.Shared);
                 packet.Assign((IPEndPoint)e.RemoteEndPoint);
                 packet.CopyFrom(e.Buffer, e.Offset, e.BytesTransferred);
                 OnPacketReceived?.Invoke(packet);
