@@ -7,6 +7,7 @@ namespace CriticalCrate.UDP
         private IntPtr _startPointer;
         private int _tSize;
         public int Length { get; private set; }
+        internal IntPtr Raw => _startPointer;
 
         public T this[int index]
         {
@@ -37,9 +38,9 @@ namespace CriticalCrate.UDP
             Marshal.Copy(array, offset, _startPointer, length);
         }
 
-        public void CopyTo(byte[] array, int offset)
+        public void CopyTo(byte[] array, int offset, int sourceOffset = 0)
         {
-            Marshal.Copy(_startPointer, array, offset, Length);
+            Marshal.Copy(_startPointer + sourceOffset, array, offset, Length - sourceOffset);
         }
     }
 }

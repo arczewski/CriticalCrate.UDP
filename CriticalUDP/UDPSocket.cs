@@ -12,7 +12,7 @@ namespace CriticalCrate.UDP
     {
         public event OnPacketReceived OnPacketReceived;
 
-        private int _mtuSize;
+        public int Mtu { get; set; }
         private SocketAsyncEventArgs _readEvent;
         private SocketAsyncEventArgs _writeEvent;
         private Socket _listenSocket;
@@ -22,9 +22,9 @@ namespace CriticalCrate.UDP
         private Thread _sendThread;
         private CancellationTokenSource _sendThreadCancelation;
 
-        public UDPSocket(int mtuSize, bool willBeAccessFromSingleThread)
+        public UDPSocket(int mtu)
         {
-            _mtuSize = mtuSize;
+            Mtu = mtu;
             _sendSemaphore = new SemaphoreSlim(1, 1);
             _packets = new BlockingCollection<Packet>();
             _sendThreadCancelation = new CancellationTokenSource();
@@ -35,6 +35,11 @@ namespace CriticalCrate.UDP
             _listenSocket = new Socket(SocketType.Dgram, ProtocolType.Udp);
         }
 
+        public void Listen(ushort port)
+        {
+            Listen(new IPEndPoint(IPAddress.Any, port));
+        }
+        
         public void Listen(IPEndPoint endPoint)
         {
             _listenSocket.Bind(endPoint);
@@ -55,6 +60,7 @@ namespace CriticalCrate.UDP
                 var packet = _packets.Take(cancellationToken);
                 await _sendSemaphore.WaitAsync(cancellationToken);
                 packet.CopyTo(_writeEvent.Buffer, _writeEvent.Offset);
+                _writeEvent.SetBuffer(0, packet.Data.Length);
                 _writeEvent.RemoteEndPoint = packet.EndPoint;
                 packet.Dispose();
                 if (!_listenSocket.SendToAsync(_writeEvent))
@@ -71,12 +77,12 @@ namespace CriticalCrate.UDP
         private void SetupSocketEvents()
         {
             _readEvent = new SocketAsyncEventArgs();
-            _readEvent.SetBuffer(new byte[_mtuSize], 0, _mtuSize);
+            _readEvent.SetBuffer(new byte[Mtu], 0, Mtu);
             _readEvent.RemoteEndPoint = new IPEndPoint(IPAddress.Parse("1.1.1.1"), 0);
             _readEvent.Completed += OnIOCompleted;
 
             _writeEvent = new SocketAsyncEventArgs();
-            _writeEvent.SetBuffer(new byte[_mtuSize], 0, _mtuSize);
+            _writeEvent.SetBuffer(new byte[Mtu], 0, Mtu);
             _writeEvent.RemoteEndPoint = new IPEndPoint(IPAddress.Parse("1.1.1.1"), 0);
             _writeEvent.Completed += OnIOCompleted;
         }
@@ -103,6 +109,7 @@ namespace CriticalCrate.UDP
 
         private void ProcessWrite(SocketAsyncEventArgs e)
         {
+            _writeEvent.SetBuffer(0, Mtu);
             _sendSemaphore.Release();
         }
 
@@ -110,7 +117,7 @@ namespace CriticalCrate.UDP
         {
             if (e.SocketError == SocketError.Success)
             {
-                var packet = new Packet(_mtuSize);
+                var packet = new Packet(e.BytesTransferred);
                 packet.Assign((IPEndPoint)e.RemoteEndPoint);
                 packet.CopyFrom(e.Buffer, e.Offset, e.BytesTransferred);
                 OnPacketReceived?.Invoke(packet);

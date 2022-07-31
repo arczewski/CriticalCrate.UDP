@@ -16,6 +16,7 @@ namespace CriticalCrate.UDP
         public void Dispose()
         {
             Data.Dispose();
+            EndPoint = null;
         }
 
         public void Assign(EndPoint endPoint)
