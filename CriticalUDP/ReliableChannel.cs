@@ -33,7 +33,7 @@ namespace CriticalCrate.UDP
 // 1 byte for ping - optional
 // so unreliable overhead = 1 byte / 2 with ping
 // reliable overhead = 4 byte / 5 with ping
-    internal class ReliableChannel
+    internal class ReliableChannel : IDisposable
     {
         public const int ReliableChannelHeaderSize = 4;
 
@@ -172,6 +172,12 @@ namespace CriticalCrate.UDP
         {
             packet.CopyTo(buffer, offset, ReliableChannel.ReliableChannelHeaderSize);
             return packet.Position - ReliableChannel.ReliableChannelHeaderSize;
+        }
+
+        public void Dispose()
+        {
+            _outgoingPacket.Dispose();
+            _incomingPacket.Dispose();
         }
     }
 
