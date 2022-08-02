@@ -19,6 +19,7 @@ namespace CriticalCrate.UDP
         private IConnectionManager _connectionManager;
         private Dictionary<int, ReliableChannel> _reliableChannels;
         private ConcurrentQueue<Packet> _pendingPackets;
+        private ConcurrentQueue<Packet> _pendingReliable;
 
         private bool _isClient = false;
         private EndPoint _serverEndpoint;
@@ -30,6 +31,7 @@ namespace CriticalCrate.UDP
             _timeoutMs = timeoutMs;
             _reliableChannels = new Dictionary<int, ReliableChannel>();
             _pendingPackets = new ConcurrentQueue<Packet>();
+            _pendingReliable = new ConcurrentQueue<Packet>();
             _socket.OnPacketReceived += OnPacketReceived;
         }
 
@@ -56,8 +58,15 @@ namespace CriticalCrate.UDP
             eventsLeft = 0;
             packet = default;
             if (!_pendingPackets.TryDequeue(out packet))
+            {
+                if (_pendingReliable.TryDequeue(out packet))
+                {
+                    eventsLeft = _pendingReliable.Count + _pendingPackets.Count;
+                    return true;
+                }
                 return false;
-            
+            }
+
             if (((PacketType)packet.Data[0] & PacketType.Connect) == PacketType.Connect)
             {
                 _connectionManager.OnConnectionPacket(packet);
@@ -128,7 +137,7 @@ namespace CriticalCrate.UDP
 
         private ReliableChannel CreateChannel(UDPSocket socket)
         {
-            var channel = new ReliableChannel(_socket);
+            var channel = new ReliableChannel(socket);
             channel.OnPacketReceived += OnReliablePacketReceived;
             return channel;
         }
@@ -150,7 +159,7 @@ namespace CriticalCrate.UDP
 
         private void OnReliablePacketReceived(ReliableIncomingPacket reliablePacket)
         {
-            _pendingPackets.Enqueue(reliablePacket.GetData());
+            _pendingReliable.Enqueue(reliablePacket.GetResultPacket());
         }
 
         private void OnPacketReceived(Packet packet)

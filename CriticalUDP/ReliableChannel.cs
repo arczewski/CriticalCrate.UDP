@@ -138,8 +138,8 @@ namespace CriticalCrate.UDP
                     _incomingPacket.Receive(packetType, seq, ack, packet);
                     if (!_incomingPacket.IsComplete()) return;
                     _socket.Send(ReliableIncomingPacket.CreateAckPacket(packet, ArrayPool<byte>.Shared));
-                    _incomingPacket.Reset();
                     OnPacketReceived?.Invoke(_incomingPacket);
+                    _incomingPacket.Reset();
                 }
                 else if (_incomingPacket.Seq == -1 || oldPacket)
                 {
@@ -264,7 +264,7 @@ namespace CriticalCrate.UDP
             return true;
         }
 
-        public Packet GetData()
+        public Packet GetResultPacket()
         {
             int size = 0;
             for (int i = 0; i < _partsCount; i++)
@@ -278,7 +278,7 @@ namespace CriticalCrate.UDP
             {
                 offset += ReliableChannel.ReadData(_packets[i], packet.Data, offset);
             }
-
+            packet.Assign(_packets[0].EndPoint);
             return packet;
         }
     }

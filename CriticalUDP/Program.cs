@@ -28,13 +28,15 @@ while (!isConnected)
 {
     server.Pool(out var packet, out var eventsLeft);
     client.Pool(out var packet2, out var eventsLeft2);
-    Thread.Sleep(10);
+    Thread.Sleep(12);
 }
-client.Send(bytes, 0, bytes.Length, SendMode.Unreliable);
+client.Send(bytes, 0, bytes.Length, SendMode.Reliable);
 while (true)
 {
     if(server.Pool(out var packet, out var eventsLeft))
         Console.WriteLine($"Received: {Encoding.UTF8.GetString(packet.Data, 0, packet.Data.Length)}");
     client.Pool(out var packet2, out var eventsLeft2);
+    client.Send(bytes, 0, bytes.Length, SendMode.Reliable);
+    Thread.Sleep(12);
 }
 

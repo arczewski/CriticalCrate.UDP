@@ -39,7 +39,7 @@ namespace CriticalCrate.UDP
 
         public void CopyTo(byte[] buffer, int offset, int sourceOffset = 0)
         {
-            Array.Copy(Data, sourceOffset, buffer, offset, Position);
+            Array.Copy(Data, sourceOffset, buffer, offset, Position - sourceOffset);
         }
 
         public void ForcePosition(int position)
