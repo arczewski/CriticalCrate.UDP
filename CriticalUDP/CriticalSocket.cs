@@ -51,6 +51,11 @@ namespace CriticalCrate.UDP
             Listen(new IPEndPoint(IPAddress.Any, port), maxClients, timeoutMilliseconds);
         }
 
+        public int GetLowestConnectedMTU()
+        {
+            return _connectionManager.GetLowestConnectedMTU();
+        }
+
         public bool Pool(out Packet packet, out int eventsLeft)
         {
             _connectionManager.CheckConnectionTimeout();
@@ -102,7 +107,7 @@ namespace CriticalCrate.UDP
         public void Connect(IPEndPoint endPoint, int connectingTimeoutMs, Action<bool> onConnected)
         {
             _isClient = true;
-            Listen(new IPEndPoint(IPAddress.Any, 6000));
+            Listen(new IPEndPoint(IPAddress.Any, 0));
             _serverEndpoint = endPoint;
             _connectionManager = new ClientConnectionManager(_socket, _timeoutMs);
             _connectionManager.OnConnected += HandleConnected;
@@ -116,7 +121,7 @@ namespace CriticalCrate.UDP
             int socketId = 0;
             if (isUnreliable)
             {
-                if (size + UnreliableChannel.UnreliableHeaderSize >= _connectionManager.GetMTU())
+                if (size + UnreliableChannel.UnreliableHeaderSize >= _connectionManager.GetLowestConnectedMTU())
                     Console.WriteLine("Packet size bigger than MTU!");
                 _unreliableChannel.Send(endPoint, data, offset, size);
                 return;
@@ -134,9 +139,9 @@ namespace CriticalCrate.UDP
             Send(_serverEndpoint, data, offset, size, sendMode);
         }
 
-        private ReliableChannel CreateChannel(UDPSocket socket)
+        private ReliableChannel CreateChannel(UDPSocket socket, int mtu)
         {
-            var channel = new ReliableChannel(socket);
+            var channel = new ReliableChannel(socket, mtu);
             channel.OnPacketReceived += OnReliablePacketReceived;
             return channel;
         }
@@ -150,7 +155,7 @@ namespace CriticalCrate.UDP
 
         private void HandleConnected(int socketId)
         {
-            var newChannel = CreateChannel(_socket);
+            var newChannel = CreateChannel(_socket, _connectionManager.GetMTU(socketId));
             if (!_reliableChannels.TryAdd(socketId, newChannel))
                 newChannel.Dispose();
             OnConnected?.Invoke(socketId);

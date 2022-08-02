@@ -9,12 +9,12 @@ public class ClientConnectionManager : IConnectionManager
     public event Action<int> OnDisconnected;
     
     private UDPSocket _socket;
-    private EndPoint _serverEndpoint;
+    private IPEndPoint _serverEndpoint;
     private int _timeOutMs = 10000;
     private DateTime _lastReceivedPacket;
     private Action<bool>? _onConnectAction;
     private bool _isConnected;
-    private int _connectingTimeoutMs = 1000;
+    private int _connectingTimeoutMs = 100;
     private int _discoveredMtu = UDPSocket.MaxMTU;
 
     public ClientConnectionManager(UDPSocket socket, int timeOutMs = 1000)
@@ -24,8 +24,10 @@ public class ClientConnectionManager : IConnectionManager
     }
     public void OnConnectionPacket(Packet packet)
     {
-        if (_onConnectAction == null)
+        if (_isConnected)
             return;
+        _discoveredMtu = packet.Position;
+        Console.WriteLine($"Discovered MTU: {_discoveredMtu}");
         _isConnected = true;
         _lastReceivedPacket = DateTime.Now;
         _onConnectAction?.Invoke(true);
@@ -50,7 +52,13 @@ public class ClientConnectionManager : IConnectionManager
     {
         if (!_isConnected)
         {
-            if (_lastReceivedPacket.AddMilliseconds(_timeOutMs) >= DateTime.Now) return;
+            if (_lastReceivedPacket.AddMilliseconds(_connectingTimeoutMs) >= DateTime.Now) return;
+            if (_discoveredMtu > UDPSocket.MinMTU)
+            {
+                _discoveredMtu -= 256;
+                Connect(_serverEndpoint, _connectingTimeoutMs, _onConnectAction);
+                return;
+            }
             _onConnectAction = null;
             _isConnected = false;
             _onConnectAction?.Invoke(false);
@@ -68,7 +76,12 @@ public class ClientConnectionManager : IConnectionManager
         return _isConnected;
     }
 
-    public int GetMTU()
+    public int GetLowestConnectedMTU()
+    {
+        return _discoveredMtu;
+    }
+
+    public int GetMTU(int socketId)
     {
         return _discoveredMtu;
     }
@@ -79,7 +92,7 @@ public class ClientConnectionManager : IConnectionManager
         _connectingTimeoutMs = connectTimeoutMs;
         _lastReceivedPacket = DateTime.Now;
         _serverEndpoint = endPoint;
-        _socket.Send(ServerConnectionManager.CreateConnectionPacket(endPoint, PacketType.Connect));
+        _socket.Send(ServerConnectionManager.CreateConnectionPacket(endPoint, PacketType.Connect, _discoveredMtu));
     }
 }
 
@@ -92,7 +105,8 @@ public interface IConnectionManager
      void OnPacket(Packet packet);
      void CheckConnectionTimeout();
      bool IsConnected(EndPoint endPoint, out int socketId);
-     int GetMTU();
+     int GetLowestConnectedMTU();
+     int GetMTU(int socketId);
 }
 
 public class ServerConnectionManager : IConnectionManager
@@ -137,9 +151,18 @@ public class ServerConnectionManager : IConnectionManager
         return _endpointToId.TryGetValue(endPoint, out socketId);
     }
 
-    public int GetMTU()
+    public int GetLowestConnectedMTU()
     {
         return _lowestClientMtu;
+    }
+
+    public int GetMTU(int socketId)
+    {
+        if (!_idToEndpoint.TryGetValue(socketId, out var endPoint))
+            return _lowestClientMtu;
+        if (!_mtu.TryGetValue(endPoint, out int mtu))
+            return _lowestClientMtu;
+        return mtu;
     }
 
     public bool TryGetEndPoint(int socketId, out EndPoint endPoint)
@@ -151,23 +174,28 @@ public class ServerConnectionManager : IConnectionManager
     {
         if (_endpointToId.TryGetValue(packet.EndPoint, out var socketId))
         {
-            _socket.Send(CreateConnectionPacket(packet.EndPoint, PacketType.Connect));
+            _socket.Send(CreateConnectionPacket(packet.EndPoint, PacketType.Connect, packet.Position));
             return;
         }
+
+        if (_lowestClientMtu > packet.Position)
+            _lowestClientMtu = packet.Position;
+        
         socketId = _nextSocketId++;
+        _mtu.Add(packet.EndPoint, packet.Position);
         _endpointToId.Add(packet.EndPoint, socketId);
         _idToEndpoint.Add(socketId, packet.EndPoint);
         _lastReceivedPacket.Add(packet.EndPoint, DateTime.Now);
-        _socket.Send(CreateConnectionPacket(packet.EndPoint, PacketType.Connect));
+        _socket.Send(CreateConnectionPacket(packet.EndPoint, PacketType.Connect, packet.Position));
         OnConnected?.Invoke(socketId);
     }
 
-    internal static Packet CreateConnectionPacket(EndPoint endPoint, PacketType type)
+    internal static Packet CreateConnectionPacket(EndPoint endPoint, PacketType type, int mtu = 1)
     {
-        var packet = new Packet(1, ArrayPool<byte>.Shared);
+        var packet = new Packet(mtu, ArrayPool<byte>.Shared);
         packet.Assign(endPoint);
         packet.Data[0] = (byte)type;
-        packet.ForcePosition(1);
+        packet.ForcePosition(mtu);
         return packet;
     }
 
@@ -178,6 +206,7 @@ public class ServerConnectionManager : IConnectionManager
         _endpointToId.Remove(endpoint);
         _idToEndpoint.Remove(socketId);
         _lastReceivedPacket.Remove(endpoint);
+        _mtu.Remove(endpoint);
         _socket.Send(CreateConnectionPacket(endpoint, PacketType.Disconnect));
         OnDisconnected?.Invoke(socketId);
     }
