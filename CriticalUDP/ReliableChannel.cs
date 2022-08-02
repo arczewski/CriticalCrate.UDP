@@ -70,10 +70,10 @@ namespace CriticalCrate.UDP
             _sendQueue.Enqueue(packet);
         }
 
-        /*public void UpdateRTT(int rtt) // TODO after ping measurements is enabled
+        public void UpdateRTT(long rtt)
         {
-            _resendAfterMs = (int)(rtt * 1.5f);
-        }*/
+            _resendAfterMs = Math.Max(20, (int)(rtt * 1.2f));
+        }
 
         public void Update()
         {

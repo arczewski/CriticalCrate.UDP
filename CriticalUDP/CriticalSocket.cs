@@ -65,7 +65,11 @@ namespace CriticalCrate.UDP
             PingManager.Update();
             _connectionManager.CheckConnectionTimeout();
             foreach (var keyValue in _reliableChannels)
+            {
+                var endPoint = _connectionManager.GetEndPoint(keyValue.Key);
+                keyValue.Value.UpdateRTT(PingManager.GetPing(endPoint));
                 keyValue.Value.Update();
+            }
 
             eventsLeft = 0;
             packet = default;
