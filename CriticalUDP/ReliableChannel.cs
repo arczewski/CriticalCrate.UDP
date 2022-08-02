@@ -26,6 +26,7 @@ namespace CriticalCrate.UDP
 //0 0 0 1 1 0 0 0  ack
 //0 0 0 1 0 1 0 0  reliable packet end
 //0 0 0 0 0 0 1 0  ping
+//0 0 0 0 0 0 0 1  mtu discovery
 //
 // for reliable channel:
 // 1 bytes for seq - for full packet
@@ -35,7 +36,7 @@ namespace CriticalCrate.UDP
 // reliable overhead = 4 byte / 5 with ping
     internal class ReliableChannel : IDisposable
     {
-        public const int ReliableChannelHeaderSize = 4;
+        public const int ReliableChannelHeaderSize = 5;
 
         public event Action<ReliableIncomingPacket> OnPacketReceived;
 
@@ -52,12 +53,12 @@ namespace CriticalCrate.UDP
         private int _resendAfterMs = 100;
         private int _loopSequenceThreshold = 16;
 
-        public ReliableChannel(UDPSocket socket, int packetSendWindow = 60 * 1024)
+        public ReliableChannel(UDPSocket socket, int packetSendWindow = 60 * 1024, int mtu = UDPSocket.MinMTU)
         {
             _socket = socket;
             _packetSendWindow = packetSendWindow;
-            _incomingPacket = new ReliableIncomingPacket(_socket.Mtu);
-            _outgoingPacket = new ReliableOutgoingPacket(_socket.Mtu);
+            _incomingPacket = new ReliableIncomingPacket(mtu);
+            _outgoingPacket = new ReliableOutgoingPacket(mtu);
         }
 
         public void Send(EndPoint endPoint, byte[] data, int offset, int size)

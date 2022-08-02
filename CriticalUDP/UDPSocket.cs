@@ -11,9 +11,10 @@ namespace CriticalCrate.UDP
     public delegate void OnPacketReceived(Packet packet);
     public class UDPSocket : IDisposable
     {
+        public const int MaxMTU = 1500;
+        public const int MinMTU = 576;
         public event OnPacketReceived OnPacketReceived;
-
-        public int Mtu { get; set; }
+        
         private SocketAsyncEventArgs _readEvent;
         private SocketAsyncEventArgs _writeEvent;
         private Socket _listenSocket;
@@ -22,10 +23,10 @@ namespace CriticalCrate.UDP
         private SemaphoreSlim _sendSemaphore;
         private Thread _sendThread;
         private CancellationTokenSource _sendThreadCancelation;
+        
 
-        public UDPSocket(int mtu)
+        public UDPSocket()
         {
-            Mtu = mtu;
             _sendSemaphore = new SemaphoreSlim(1, 1);
             _packets = new BlockingCollection<Packet>();
             _sendThreadCancelation = new CancellationTokenSource();
@@ -80,12 +81,12 @@ namespace CriticalCrate.UDP
         private void SetupSocketEvents()
         {
             _readEvent = new SocketAsyncEventArgs();
-            _readEvent.SetBuffer(new byte[Mtu], 0, Mtu);
+            _readEvent.SetBuffer(new byte[MaxMTU], 0, MaxMTU);
             _readEvent.RemoteEndPoint = new IPEndPoint(IPAddress.Parse("1.1.1.1"), 0);
             _readEvent.Completed += OnIOCompleted;
 
             _writeEvent = new SocketAsyncEventArgs();
-            _writeEvent.SetBuffer(new byte[Mtu], 0, Mtu);
+            _writeEvent.SetBuffer(new byte[MaxMTU], 0, MaxMTU);
             _writeEvent.RemoteEndPoint = new IPEndPoint(IPAddress.Parse("1.1.1.1"), 0);
             _writeEvent.Completed += OnIOCompleted;
         }
@@ -112,7 +113,7 @@ namespace CriticalCrate.UDP
 
         private void ProcessWrite(SocketAsyncEventArgs e)
         {
-            _writeEvent.SetBuffer(0, Mtu);
+            _writeEvent.SetBuffer(0, MaxMTU);
             _sendSemaphore.Release();
         }
 

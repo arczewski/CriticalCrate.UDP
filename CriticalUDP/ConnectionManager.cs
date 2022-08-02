@@ -15,6 +15,7 @@ public class ClientConnectionManager : IConnectionManager
     private Action<bool>? _onConnectAction;
     private bool _isConnected;
     private int _connectingTimeoutMs = 1000;
+    private int _discoveredMtu = UDPSocket.MaxMTU;
 
     public ClientConnectionManager(UDPSocket socket, int timeOutMs = 1000)
     {
@@ -67,6 +68,11 @@ public class ClientConnectionManager : IConnectionManager
         return _isConnected;
     }
 
+    public int GetMTU()
+    {
+        return _discoveredMtu;
+    }
+
     public void Connect(IPEndPoint endPoint, int connectTimeoutMs, Action<bool> onConnected)
     {
         _onConnectAction = onConnected;
@@ -86,6 +92,7 @@ public interface IConnectionManager
      void OnPacket(Packet packet);
      void CheckConnectionTimeout();
      bool IsConnected(EndPoint endPoint, out int socketId);
+     int GetMTU();
 }
 
 public class ServerConnectionManager : IConnectionManager
@@ -98,8 +105,11 @@ public class ServerConnectionManager : IConnectionManager
     private Dictionary<EndPoint, int> _endpointToId = new Dictionary<EndPoint, int>();
     private Dictionary<int, EndPoint> _idToEndpoint = new Dictionary<int, EndPoint>();
     private Dictionary<EndPoint, DateTime> _lastReceivedPacket = new Dictionary<EndPoint, DateTime>();
+    private Dictionary<EndPoint, int> _mtu = new Dictionary<EndPoint, int>();
     private List<EndPoint> _endPointsToDisconnect = new List<EndPoint>();
     private int _timeoutMs;
+
+    private int _lowestClientMtu = UDPSocket.MinMTU;
     
     private int _nextSocketId = int.MinValue;
 
@@ -125,6 +135,11 @@ public class ServerConnectionManager : IConnectionManager
     public bool IsConnected(EndPoint endPoint, out int socketId)
     {
         return _endpointToId.TryGetValue(endPoint, out socketId);
+    }
+
+    public int GetMTU()
+    {
+        return _lowestClientMtu;
     }
 
     public bool TryGetEndPoint(int socketId, out EndPoint endPoint)

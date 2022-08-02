@@ -17,6 +17,7 @@ namespace CriticalCrate.UDP
         
         private UDPSocket _socket;
         private IConnectionManager _connectionManager;
+        private UnreliableChannel _unreliableChannel;
         private Dictionary<int, ReliableChannel> _reliableChannels;
         private ConcurrentQueue<Packet> _pendingPackets;
         private ConcurrentQueue<Packet> _pendingReliable;
@@ -25,11 +26,12 @@ namespace CriticalCrate.UDP
         private EndPoint _serverEndpoint;
         private int _timeoutMs = 10000;
 
-        public CriticalSocket(int mtu, int timeoutMs = 10000)
+        public CriticalSocket(int timeoutMs = 10000)
         {
-            _socket = new UDPSocket(mtu);
+            _socket = new UDPSocket();
             _timeoutMs = timeoutMs;
             _reliableChannels = new Dictionary<int, ReliableChannel>();
+            _unreliableChannel = new UnreliableChannel(_socket);
             _pendingPackets = new ConcurrentQueue<Packet>();
             _pendingReliable = new ConcurrentQueue<Packet>();
             _socket.OnPacketReceived += OnPacketReceived;
@@ -112,15 +114,11 @@ namespace CriticalCrate.UDP
         {
             bool isUnreliable = sendMode == SendMode.Unreliable;
             int socketId = 0;
-            if (isUnreliable && size > _socket.Mtu)
-                throw new ArgumentException(
-                    $"Unreliable packet is to big - using {size} bytes of {_socket.Mtu} available");
             if (isUnreliable)
             {
-                var packet = new Packet(size, ArrayPool<byte>.Shared);
-                packet.CopyFrom(data, offset, size);
-                packet.Assign(endPoint);
-                _socket.Send(packet);
+                if (size + UnreliableChannel.UnreliableHeaderSize >= _connectionManager.GetMTU())
+                    Console.WriteLine("Packet size bigger than MTU!");
+                _unreliableChannel.Send(endPoint, data, offset, size);
                 return;
             }
             
