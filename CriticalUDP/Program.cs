@@ -13,65 +13,65 @@ string longMessage = loremIpsum;
 for (int i = 0; i < 12; i++)
     longMessage += loremIpsum;
 
-using var server = new CriticalSocket(100000);
-using var client = new CriticalSocket(100000);
-int clientSocketId = 0;
-server.OnConnected += (socketId) =>
-{
-    clientSocketId = socketId;
-    Console.WriteLine($"Client connected - {socketId}");
-};
-server.OnDisconnected += (socketId) => Console.WriteLine($"Client disconnected - {socketId}");
-client.OnDisconnected += (socketId) => Console.WriteLine("Clientside disconnected");
+using var socket = new CriticalSocket();
+byte[] bytes = Encoding.UTF8.GetBytes(shortMessage);
 
-var serverEndpoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 5000);
-server.Listen(serverEndpoint);
-bool isConnected = false;
-client.Connect(serverEndpoint, 1000, (result) =>
+Console.Write("IP: ");
+string ip = Console.ReadLine();
+Console.Write("PORT: ");
+int port = int.Parse(Console.ReadLine());
+Console.Write("[s]erver/[c]lient?");
+var input = Console.ReadLine();
+if (input == "s")
 {
-    Console.WriteLine($"Connection status: {result}");
-    isConnected = true;
-});
-
-byte[] bytes = Encoding.UTF8.GetBytes(longMessage);
-while (!isConnected)
-{
-    while (server.Pool(out var packet, out var eventsLeft))
+    socket.Listen(new IPEndPoint(IPAddress.Parse(ip), port), 10);
+    EndPoint clientEndpoint = null;
+    socket.OnConnected += socketId => clientEndpoint = socket.ConnectionManager.GetEndPoint(socketId);
+    while (clientEndpoint == null)
     {
-        packet.Dispose();
+        while (socket.Pool(out var packet, out var eventsLeft))
+        {
+            
+        }
     }
-
-    while (client.Pool(out var packet2, out var eventsLeft2))
+    
+    Console.WriteLine("Sending!");
+    while (true)
     {
-        packet2.Dispose();
-    }
-
-    Thread.Sleep(15);
-}
-
-EndPoint clientEndpoint = server.ConnectionManager.GetEndPoint(clientSocketId);
-client.Send(bytes, 0, bytes.Length, SendMode.Reliable);
-server.Send(clientEndpoint, bytes, 0, bytes.Length, SendMode.Reliable);
-Stopwatch watch = new Stopwatch();
-watch.Start();
-int messages = 0;
-while (watch.ElapsedMilliseconds < 5000)
-{
-    while (server.Pool(out var packet, out var eventsLeft))
-    {
-        Debug.Assert(packet.Position == bytes.Length);
-        packet.Dispose();
-        client.Send(bytes, 0, bytes.Length, SendMode.Reliable);
-        messages++;
-    }
-
-    while (client.Pool(out var packet2, out var eventsLeft2))
-    {
-        Debug.Assert(packet2.Position == bytes.Length);
-        packet2.Dispose();
-        server.Send(clientEndpoint, bytes, 0, bytes.Length, SendMode.Reliable);
-        messages++;
+        while (socket.Pool(out var packet, out var eventsLeft))
+        {
+            
+        }
+        socket.Send(clientEndpoint, bytes, 0, bytes.Length, SendMode.Unreliable);
     }
 }
+else if (input == "c")
+{
+    bool connected = false;
+    socket.Connect(new IPEndPoint(IPAddress.Parse(ip), port), 1000, (success) =>
+    {
+        connected = success;
+        Console.WriteLine("Connected");
+    });
+    
+    while (socket.Pool(out var packet, out var eventsLeft) || !connected)
+    {
+        
+    }
+    Console.WriteLine("Pooling");
+    Stopwatch watch = new Stopwatch();
+    watch.Start();
+    int messages = 0;
+    while (watch.ElapsedMilliseconds <= 5000)
+    {
+        while (socket.Pool(out var packet, out var eventsLeft))
+        {
+            packet.Dispose();
+            messages++;
+        }
+    }
+    Console.WriteLine($"Reliable messages per seconds: {messages / 5.0f}");
+}
 
-Console.WriteLine($"Reliable messages per seconds: {messages / 5.0f}");
+Console.ReadKey();
+
