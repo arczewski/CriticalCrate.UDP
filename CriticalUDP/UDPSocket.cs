@@ -61,8 +61,8 @@ namespace CriticalCrate.UDP
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var packet = _packets.Take(cancellationToken);
                 await _sendSemaphore.WaitAsync(cancellationToken);
+                var packet = _packets.Take(cancellationToken);
                 _writeEvent.SetBuffer(0, packet.Position);
                 _writeEvent.RemoteEndPoint = packet.EndPoint;
                 packet.CopyTo(_writeEvent.Buffer, _writeEvent.Offset);
