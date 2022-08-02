@@ -15,9 +15,10 @@ server.OnConnected += (socketId) => Console.WriteLine($"Client connected - {sock
 server.OnDisconnected += (socketId) => Console.WriteLine($"Client disconnected - {socketId}");
 client.OnDisconnected += (socketId) => Console.WriteLine("Clientside disconnected");
 
-server.Listen(new IPEndPoint(IPAddress.Parse("10.0.2.15"),5000));
+var serverEndpoint = new IPEndPoint(IPAddress.Parse("10.0.2.15"), 5000);
+server.Listen(serverEndpoint);
 bool isConnected = false;
-client.Connect(new IPEndPoint(IPAddress.Parse("10.0.2.15"), 5000), 1000, (result) =>
+client.Connect(serverEndpoint, 1000, (result) =>
 {
     Console.WriteLine($"Connection status: {result}");
     isConnected = true;
@@ -30,13 +31,13 @@ while (!isConnected)
     client.Pool(out var packet2, out var eventsLeft2);
     Thread.Sleep(12);
 }
+
 client.Send(bytes, 0, bytes.Length, SendMode.Reliable);
 while (true)
 {
-    if(server.Pool(out var packet, out var eventsLeft))
-        Console.WriteLine($"Received: {Encoding.UTF8.GetString(packet.Data, 0, packet.Data.Length)}");
+    server.Pool(out var packet, out var eventsLeft);
     client.Pool(out var packet2, out var eventsLeft2);
-    client.Send(bytes, 0, bytes.Length, SendMode.Reliable);
-    Thread.Sleep(12);
+    Console.WriteLine($"Client ping: {client.PingManager.GetPing(serverEndpoint)}");
+    //client.Send(bytes, 0, bytes.Length, SendMode.Reliable);
+    Thread.Sleep(100);
 }
-

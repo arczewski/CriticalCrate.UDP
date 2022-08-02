@@ -86,6 +86,11 @@ public class ClientConnectionManager : IConnectionManager
         return _discoveredMtu;
     }
 
+    public EndPoint GetEndPoint(int socketId)
+    {
+        return _serverEndpoint;
+    }
+
     public void Connect(IPEndPoint endPoint, int connectTimeoutMs, Action<bool> onConnected)
     {
         _onConnectAction = onConnected;
@@ -107,6 +112,7 @@ public interface IConnectionManager
      bool IsConnected(EndPoint endPoint, out int socketId);
      int GetLowestConnectedMTU();
      int GetMTU(int socketId);
+     EndPoint GetEndPoint(int socketId);
 }
 
 public class ServerConnectionManager : IConnectionManager
@@ -163,6 +169,12 @@ public class ServerConnectionManager : IConnectionManager
         if (!_mtu.TryGetValue(endPoint, out int mtu))
             return _lowestClientMtu;
         return mtu;
+    }
+
+    public EndPoint GetEndPoint(int socketId)
+    {
+        _idToEndpoint.TryGetValue(socketId, out var endPoint);
+        return endPoint;
     }
 
     public bool TryGetEndPoint(int socketId, out EndPoint endPoint)

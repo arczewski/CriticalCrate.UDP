@@ -3,19 +3,16 @@ using System.Net;
 
 namespace CriticalCrate.UDP;
 
-public interface IChannel
-{
-    void Send(EndPoint endPoint, byte[] data, int offset, int size);
-}
-
 public class UnreliableChannel
 {
     public const int UnreliableHeaderSize = 2;
     private UDPSocket _socket;
+    private PingManager _pingManager;
 
-    public UnreliableChannel(UDPSocket socket)
+    public UnreliableChannel(UDPSocket socket, PingManager pingManager)
     {
         _socket = socket;
+        _pingManager = pingManager;
     }
 
     public void Send(EndPoint endPoint, byte[] data, int offset, int size)
@@ -25,6 +22,7 @@ public class UnreliableChannel
         packet.Assign(endPoint);
         packet.CopyFrom(data, offset, size, UnreliableHeaderSize);
         packet.Data[0] = (byte)PacketType.Unreliable;
+        _pingManager.OnPacketSend(ref packet);
         _socket.Send(packet);
     }
 }

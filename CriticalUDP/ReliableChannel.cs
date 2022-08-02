@@ -15,7 +15,8 @@ namespace CriticalCrate.UDP
         Reliable = 8,
         ReliableAck = Reliable | 16,
         ReliablePacketEnd = Reliable | 32,
-        Ping = 64
+        Ping = 64,
+        Pong = 128,
     }
 
 //first byte
@@ -26,7 +27,7 @@ namespace CriticalCrate.UDP
 //0 0 0 1 1 0 0 0  ack
 //0 0 0 1 0 1 0 0  reliable packet end
 //0 0 0 0 0 0 1 0  ping
-//0 0 0 0 0 0 0 1  mtu discovery
+//0 0 0 0 0 0 0 1  pong
 //
 // for reliable channel:
 // 1 bytes for seq - for full packet

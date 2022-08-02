@@ -15,6 +15,8 @@ namespace CriticalCrate.UDP
         public event Action<int> OnConnected;
         public event Action<int> OnDisconnected;
         
+        public PingManager PingManager { get; private set; }
+        
         private UDPSocket _socket;
         private IConnectionManager _connectionManager;
         private UnreliableChannel _unreliableChannel;
@@ -30,8 +32,9 @@ namespace CriticalCrate.UDP
         {
             _socket = new UDPSocket();
             _timeoutMs = timeoutMs;
+            PingManager = new PingManager(_socket);
             _reliableChannels = new Dictionary<int, ReliableChannel>();
-            _unreliableChannel = new UnreliableChannel(_socket);
+            _unreliableChannel = new UnreliableChannel(_socket, PingManager);
             _pendingPackets = new ConcurrentQueue<Packet>();
             _pendingReliable = new ConcurrentQueue<Packet>();
             _socket.OnPacketReceived += OnPacketReceived;
@@ -58,6 +61,7 @@ namespace CriticalCrate.UDP
 
         public bool Pool(out Packet packet, out int eventsLeft)
         {
+            PingManager.Update();
             _connectionManager.CheckConnectionTimeout();
             foreach (var keyValue in _reliableChannels)
                 keyValue.Value.Update();
@@ -100,6 +104,7 @@ namespace CriticalCrate.UDP
                 return Pool(out packet, out eventsLeft);
             }
             
+            PingManager.OnPacketReceived(packet);
             eventsLeft = _pendingPackets.Count;
             return true;
         }
@@ -150,6 +155,7 @@ namespace CriticalCrate.UDP
         {
             if (_reliableChannels.Remove(socketId, out var channel))
                 channel.Dispose();
+            PingManager.OnDisconnected(_connectionManager.GetEndPoint(socketId));
             OnDisconnected?.Invoke(socketId);
         }
 
@@ -158,6 +164,7 @@ namespace CriticalCrate.UDP
             var newChannel = CreateChannel(_socket, _connectionManager.GetMTU(socketId));
             if (!_reliableChannels.TryAdd(socketId, newChannel))
                 newChannel.Dispose();
+            PingManager.OnConnected(_connectionManager.GetEndPoint(socketId));
             OnConnected?.Invoke(socketId);
         }
 
