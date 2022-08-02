@@ -231,12 +231,12 @@ public class ServerConnectionManager : BaseConnectionManager
     {
         if (!_endpointToId.TryGetValue(endpoint, out var socketId))
             return;
+        _socket.Send(CreateConnectionPacket(endpoint, PacketType.Disconnect));
+        OnDisconnected?.Invoke(socketId);
         _endpointToId.Remove(endpoint);
         _idToEndpoint.Remove(socketId);
         _lastReceivedPacket.Remove(endpoint);
         _mtu.Remove(endpoint);
-        _socket.Send(CreateConnectionPacket(endpoint, PacketType.Disconnect));
-        OnDisconnected?.Invoke(socketId);
     }
 
     internal override void OnPacket(Packet packet)
