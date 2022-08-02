@@ -33,8 +33,7 @@ namespace CriticalCrate.UDP
             _sendThread.Start();
 
             _listenSocket?.Dispose();
-            _listenSocket = new Socket(SocketType.Dgram, ProtocolType.Udp);
-            _listenSocket.DontFragment = true;
+            _listenSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
         }
 
         public void Listen(ushort port)
@@ -45,6 +44,8 @@ namespace CriticalCrate.UDP
         public void Listen(IPEndPoint endPoint)
         {
             _listenSocket.Bind(endPoint);
+            if((_listenSocket.AddressFamily & AddressFamily.InterNetwork) == AddressFamily.InterNetwork)
+                _listenSocket.DontFragment = true;
             SetupSocketEvents();
             if (!_listenSocket.ReceiveMessageFromAsync(_readEvent))
                 ProcessRead(_readEvent);
