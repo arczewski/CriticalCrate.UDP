@@ -139,6 +139,10 @@ namespace CriticalCrate.UDP
         {
             bool isUnreliable = sendMode == SendMode.Unreliable;
             int socketId = 0;
+            
+            if (!_connectionManager.IsConnected(endPoint, out socketId))
+                throw new NotImplementedException("Socket needs to be connected to send data!");
+            
             if (isUnreliable)
             {
                 if (size + UnreliableChannel.UnreliableHeaderSize >= _connectionManager.GetLowestConnectedMTU())
@@ -146,9 +150,7 @@ namespace CriticalCrate.UDP
                 _unreliableChannel.Send(endPoint, data, offset, size);
                 return;
             }
-
-            if (!_connectionManager.IsConnected(endPoint, out socketId))
-                throw new NotImplementedException("Socket needs to be connected to send reliable data!");
+            
             _reliableChannels[socketId].Send(endPoint, data, offset, size);
         }
 
