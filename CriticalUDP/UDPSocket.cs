@@ -34,6 +34,7 @@ namespace CriticalCrate.UDP
 
             _listenSocket?.Dispose();
             _listenSocket = new Socket(SocketType.Dgram, ProtocolType.Udp);
+            _listenSocket.DontFragment = true;
         }
 
         public void Listen(ushort port)
