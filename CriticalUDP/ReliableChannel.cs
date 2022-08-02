@@ -1,4 +1,5 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
@@ -266,6 +267,7 @@ namespace CriticalCrate.UDP
             return true;
         }
 
+        //burst enabled?
         public Packet GetResultPacket()
         {
             int size = 0;

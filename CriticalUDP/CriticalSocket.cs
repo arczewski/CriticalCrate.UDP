@@ -1,5 +1,7 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Net;
 
 namespace CriticalCrate.UDP
@@ -29,7 +31,11 @@ namespace CriticalCrate.UDP
         private EndPoint _serverEndpoint;
         private int _timeoutMs = 10000;
 
+        #if UNITY_EDITOR
+        public CriticalSocket(int timeoutMs = 10000000) // pause and debugging
+        #else
         public CriticalSocket(int timeoutMs = 10000)
+        #endif
         {
             _socket = new UDPSocket();
             _timeoutMs = timeoutMs;
