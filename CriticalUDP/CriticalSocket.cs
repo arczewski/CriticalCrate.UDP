@@ -83,7 +83,8 @@ namespace CriticalCrate.UDP
 
             if (!_connectionManager.IsConnected(packet.EndPoint, out int socketId))
                 return Pool(out packet, out eventsLeft);
-
+            _connectionManager.OnPacket(packet);
+            
             if (((PacketType)packet.Data[0] & PacketType.Reliable) == PacketType.Reliable)
             {
                 if (!_reliableChannels.TryGetValue(socketId, out var channel))
