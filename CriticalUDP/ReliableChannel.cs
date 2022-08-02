@@ -281,6 +281,7 @@ namespace CriticalCrate.UDP
                 offset += ReliableChannel.ReadData(_packets[i], packet.Data, offset);
             }
             packet.Assign(_packets[0].EndPoint);
+            packet.ForcePosition(offset);
             return packet;
         }
     }

@@ -14,11 +14,11 @@ namespace CriticalCrate.UDP
     {
         public event Action<int> OnConnected;
         public event Action<int> OnDisconnected;
-        
+
         public PingManager PingManager { get; private set; }
         public IConnectionManager ConnectionManager => _connectionManager;
         private BaseConnectionManager _connectionManager;
-        
+
         private UDPSocket _socket;
         private UnreliableChannel _unreliableChannel;
         private Dictionary<int, ReliableChannel> _reliableChannels;
@@ -41,18 +41,18 @@ namespace CriticalCrate.UDP
             _socket.OnPacketReceived += OnPacketReceived;
         }
 
-        public void Listen(IPEndPoint endPoint, int maxClients = 1, int timeoutMilliseconds = 10000)
+        public void Listen(IPEndPoint endPoint, int maxClients = 1)
         {
             _serverEndpoint = endPoint;
             _socket.Listen(endPoint);
-            _connectionManager = new ServerConnectionManager(timeoutMilliseconds, maxClients, _socket);
+            _connectionManager = new ServerConnectionManager(_timeoutMs, maxClients, _socket);
             _connectionManager.OnConnected += HandleConnected;
             _connectionManager.OnDisconnected += HandleDisconnected;
         }
 
-        public void Listen(ushort port, int maxClients = 1, int timeoutMilliseconds = 10000)
+        public void Listen(ushort port, int maxClients = 1)
         {
-            Listen(new IPEndPoint(IPAddress.Any, port), maxClients, timeoutMilliseconds);
+            Listen(new IPEndPoint(IPAddress.Any, port), maxClients);
         }
 
         public int GetLowestConnectedMTU()
@@ -66,16 +66,18 @@ namespace CriticalCrate.UDP
             _connectionManager.CheckConnectionTimeout();
             foreach (var keyValue in _reliableChannels)
                 keyValue.Value.Update();
-            
+
             eventsLeft = 0;
             packet = default;
+
+            if (_pendingReliable.TryDequeue(out packet))
+            {
+                eventsLeft = _pendingReliable.Count + _pendingPackets.Count;
+                return true;
+            }
+
             if (!_pendingPackets.TryDequeue(out packet))
             {
-                if (_pendingReliable.TryDequeue(out packet))
-                {
-                    eventsLeft = _pendingReliable.Count + _pendingPackets.Count;
-                    return true;
-                }
                 return false;
             }
 
@@ -96,7 +98,7 @@ namespace CriticalCrate.UDP
             if (!_connectionManager.IsConnected(packet.EndPoint, out int socketId))
                 return Pool(out packet, out eventsLeft);
             _connectionManager.OnPacket(packet);
-            
+
             if (((PacketType)packet.Data[0] & PacketType.Reliable) == PacketType.Reliable)
             {
                 if (!_reliableChannels.TryGetValue(socketId, out var channel))
@@ -104,9 +106,17 @@ namespace CriticalCrate.UDP
                 channel.OnReceive(packet);
                 return Pool(out packet, out eventsLeft);
             }
-            
+
             PingManager.OnPacketReceived(packet);
+            if (((PacketType)packet.Data[0] & PacketType.Pong) == PacketType.Pong)
+                return Pool(out packet, out eventsLeft);
+
+            if (((PacketType)packet.Data[0] & PacketType.Ping) == PacketType.Ping && packet.Position == 2)
+                return Pool(out packet, out eventsLeft);
+
             eventsLeft = _pendingPackets.Count;
+            packet.CopyFrom(packet.Data, UnreliableChannel.UnreliableHeaderSize,
+                packet.Position - UnreliableChannel.UnreliableHeaderSize, 0);
             return true;
         }
 
@@ -132,7 +142,7 @@ namespace CriticalCrate.UDP
                 _unreliableChannel.Send(endPoint, data, offset, size);
                 return;
             }
-            
+
             if (!_connectionManager.IsConnected(endPoint, out socketId))
                 throw new NotImplementedException("Socket needs to be connected to send reliable data!");
             _reliableChannels[socketId].Send(endPoint, data, offset, size);
