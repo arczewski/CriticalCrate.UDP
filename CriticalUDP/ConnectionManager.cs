@@ -142,6 +142,7 @@ public class ServerConnectionManager : IConnectionManager
         _endpointToId.Add(packet.EndPoint, socketId);
         _idToEndpoint.Add(socketId, packet.EndPoint);
         _socket.Send(CreateConnectionPacket(packet.EndPoint, PacketType.Connect));
+        OnConnected?.Invoke(socketId);
     }
 
     internal static Packet CreateConnectionPacket(EndPoint endPoint, PacketType type)
@@ -160,6 +161,7 @@ public class ServerConnectionManager : IConnectionManager
         _endpointToId.Remove(endpoint);
         _idToEndpoint.Remove(socketId);
         _socket.Send(CreateConnectionPacket(endpoint, PacketType.Disconnect));
+        OnDisconnected?.Invoke(socketId);
     }
 
     public void OnPacket(Packet packet)

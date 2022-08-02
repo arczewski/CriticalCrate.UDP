@@ -10,11 +10,14 @@ namespace CriticalCrate.UDP
         Reliable = 1,
     }
 
-    public class CriticalSocket
+    public class CriticalSocket : IDisposable
     {
+        public event Action<int> OnConnected;
+        public event Action<int> OnDisconnected;
+        
         private UDPSocket _socket;
         private IConnectionManager _connectionManager;
-        private ConcurrentDictionary<int, ReliableChannel> _reliableChannels;
+        private Dictionary<int, ReliableChannel> _reliableChannels;
         private ConcurrentQueue<Packet> _pendingPackets;
 
         private bool _isClient = false;
@@ -25,7 +28,7 @@ namespace CriticalCrate.UDP
         {
             _socket = new UDPSocket(mtu);
             _timeoutMs = timeoutMs;
-            _reliableChannels = new ConcurrentDictionary<int, ReliableChannel>();
+            _reliableChannels = new Dictionary<int, ReliableChannel>();
             _pendingPackets = new ConcurrentQueue<Packet>();
             _socket.OnPacketReceived += OnPacketReceived;
         }
@@ -35,31 +38,63 @@ namespace CriticalCrate.UDP
             _serverEndpoint = endPoint;
             _socket.Listen(endPoint);
             _connectionManager = new ServerConnectionManager(timeoutMilliseconds, maxClients, _socket);
-            _connectionManager.OnConnected += OnConnected;
-            _connectionManager.OnDisconnected += OnDisconnected;
+            _connectionManager.OnConnected += HandleConnected;
+            _connectionManager.OnDisconnected += HandleDisconnected;
         }
 
-        public int Pool(out Packet packet)
+        public void Listen(ushort port, int maxClients = 1, int timeoutMilliseconds = 10000)
+        {
+            Listen(new IPEndPoint(IPAddress.Any, port), maxClients, timeoutMilliseconds);
+        }
+
+        public bool Pool(out Packet packet, out int eventsLeft)
         {
             _connectionManager.CheckConnectionTimeout();
             foreach (var keyValue in _reliableChannels)
-            {
                 keyValue.Value.Update();
+            
+            eventsLeft = 0;
+            packet = default;
+            if (!_pendingPackets.TryDequeue(out packet))
+                return false;
+            
+            if (((PacketType)packet.Data[0] & PacketType.Connect) == PacketType.Connect)
+            {
+                _connectionManager.OnConnectionPacket(packet);
+                packet.Dispose();
+                return Pool(out packet, out eventsLeft);
             }
 
-            if (!_pendingPackets.TryDequeue(out packet))
-                return 0;
-            return _pendingPackets.Count;
+            if (((PacketType)packet.Data[0] & PacketType.Disconnect) == PacketType.Disconnect)
+            {
+                _connectionManager.OnDisconnectionPacket(packet.EndPoint);
+                packet.Dispose();
+                return Pool(out packet, out eventsLeft);
+            }
+
+            if (!_connectionManager.IsConnected(packet.EndPoint, out int socketId))
+                return Pool(out packet, out eventsLeft);
+
+            if (((PacketType)packet.Data[0] & PacketType.Reliable) == PacketType.Reliable)
+            {
+                if (!_reliableChannels.TryGetValue(socketId, out var channel))
+                    return Pool(out packet, out eventsLeft);
+                channel.OnReceive(packet);
+                return Pool(out packet, out eventsLeft);
+            }
+            
+            eventsLeft = _pendingPackets.Count;
+            return true;
         }
 
         public void Connect(IPEndPoint endPoint, int connectingTimeoutMs, Action<bool> onConnected)
         {
             _isClient = true;
+            Listen(new IPEndPoint(IPAddress.Any, 6000));
             _serverEndpoint = endPoint;
-            Listen(new IPEndPoint(IPAddress.Any, 0));
             _connectionManager = new ClientConnectionManager(_socket, _timeoutMs);
-            _connectionManager.OnConnected += OnConnected;
-            _connectionManager.OnDisconnected += OnDisconnected;
+            _connectionManager.OnConnected += HandleConnected;
+            _connectionManager.OnDisconnected += HandleDisconnected;
             ((ClientConnectionManager)_connectionManager).Connect(endPoint, connectingTimeoutMs, onConnected);
         }
 
@@ -69,15 +104,17 @@ namespace CriticalCrate.UDP
             int socketId = 0;
             if (isUnreliable && size > _socket.Mtu)
                 throw new ArgumentException(
-                    $"Unreliable packet is to big - using {{size}} bytes of {_socket.Mtu} available");
+                    $"Unreliable packet is to big - using {size} bytes of {_socket.Mtu} available");
             if (isUnreliable)
             {
                 var packet = new Packet(size, ArrayPool<byte>.Shared);
                 packet.CopyFrom(data, offset, size);
                 packet.Assign(endPoint);
                 _socket.Send(packet);
+                return;
             }
-            else if (!_connectionManager.IsConnected(endPoint, out socketId))
+            
+            if (!_connectionManager.IsConnected(endPoint, out socketId))
                 throw new NotImplementedException("Socket needs to be connected to send reliable data!");
             _reliableChannels[socketId].Send(endPoint, data, offset, size);
         }
@@ -96,17 +133,19 @@ namespace CriticalCrate.UDP
             return channel;
         }
 
-        private void OnDisconnected(int socketId)
+        private void HandleDisconnected(int socketId)
         {
             if (_reliableChannels.Remove(socketId, out var channel))
                 channel.Dispose();
+            OnDisconnected?.Invoke(socketId);
         }
 
-        private void OnConnected(int socketId)
+        private void HandleConnected(int socketId)
         {
             var newChannel = CreateChannel(_socket);
             if (!_reliableChannels.TryAdd(socketId, newChannel))
                 newChannel.Dispose();
+            OnConnected?.Invoke(socketId);
         }
 
         private void OnReliablePacketReceived(ReliableIncomingPacket reliablePacket)
@@ -116,33 +155,12 @@ namespace CriticalCrate.UDP
 
         private void OnPacketReceived(Packet packet)
         {
-            if (((PacketType)packet.Data[0] & PacketType.Connect) == PacketType.Connect)
-            {
-                _connectionManager.OnConnectionPacket(packet);
-                packet.Dispose();
-                return;
-            }
+            _pendingPackets.Enqueue(packet);
+        }
 
-            if (((PacketType)packet.Data[0] & PacketType.Disconnect) == PacketType.Disconnect)
-            {
-                _connectionManager.OnDisconnectionPacket(packet.EndPoint);
-                packet.Dispose();
-                return;
-            }
-
-            if (!_connectionManager.IsConnected(packet.EndPoint, out int socketId))
-                return;
-
-            if (((PacketType)packet.Data[0] & PacketType.Unreliable) == PacketType.Unreliable)
-            {
-                _pendingPackets.Enqueue(packet);
-            }
-            else if (((PacketType)packet.Data[0] & PacketType.Reliable) == PacketType.Reliable)
-            {
-                if (!_reliableChannels.TryGetValue(socketId, out var channel))
-                    return;
-                channel.OnReceive(packet);
-            }
+        public void Dispose()
+        {
+            _socket.Dispose();
         }
     }
 }

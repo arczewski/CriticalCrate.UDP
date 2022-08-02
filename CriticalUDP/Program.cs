@@ -8,60 +8,32 @@ using CriticalCrate.UDP;
 const string message =
     "Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Donec quam felis, ultricies nec, pellentesque eu, pretium quis, sem. Nulla consequat massa quis enim. Donec pede justo, fringilla vel, aliquet nec, vulputate eget, arcu. In enim justo, rhoncus ut, imperdiet a, venenatis vitae, justo. Nullam dictum felis eu pede mollis pretium. Integer tincidunt. Cras dapibus. Vivamus elementum semper nisi. Aenean vulputate eleifend tellus. Aenean leo ligula, porttitor eu, consequat vitae, eleifend ac, enim. Aliquam lorem ante, dapibus in, viverra quis, feugiat a, tellus. Phasellus viverra nulla ut metus varius laoreet. Quisque rutrum. Aenean imperdiet. Etiam ultricies nisi vel augue. Curabitur ullamcorper ultricies nisi. Nam eget dui. Etiam rhoncus. Maecenas tempus, tellus eget condimentum rhoncus, sem quam semper libero, sit amet adipiscing sem neque sed ipsum. Nam quam nunc, blandit ve";
 const string shortMessage = "asddsa";
-using UDPSocket server = new UDPSocket(512);
-using UDPSocket client = new UDPSocket(512);
+using var server = new CriticalSocket(512);
+using var client = new CriticalSocket(512);
+
+server.OnConnected += (socketId) => Console.WriteLine($"Client connected - {socketId}");
+server.OnDisconnected += (socketId) => Console.WriteLine($"Client disconnected - {socketId}");
 
 server.Listen(5000);
-client.Client(6000);
-
-var clientReliableChannel = new ReliableChannel(client);
-var serverReliableChannel = new ReliableChannel(server);
-
-int unreliableMessageCount = 0;
-
-server.OnPacketReceived += (packet) =>
+bool isConnected = false;
+client.Connect(new IPEndPoint(IPAddress.Parse("127.0.0.1"), 5000), 1000, (result) =>
 {
-    Interlocked.Increment(ref unreliableMessageCount);
-    serverReliableChannel.OnReceive(packet);
-};
+    Console.WriteLine($"Connection status: {result}");
+    isConnected = true;
+});
 
-client.OnPacketReceived += (packet) =>
+byte[] bytes = Encoding.UTF8.GetBytes(shortMessage);
+while (!isConnected)
 {
-    Interlocked.Increment(ref unreliableMessageCount);
-    clientReliableChannel.OnReceive(packet);
-};
-
-
-int reliableMessageCount = 0;
-var bytes = System.Text.Encoding.UTF8.GetBytes(message);
-int messagesSend = 0;
-
-clientReliableChannel.OnPacketReceived += (reliablePacket) =>
-{
-    Interlocked.Increment(ref reliableMessageCount);
-    Interlocked.Increment(ref messagesSend);
-    if (messagesSend >= 10000)
-        return;
-    serverReliableChannel.Send(new IPEndPoint(IPAddress.Loopback, 6000), bytes, 0, bytes.Length);
-};
-
-serverReliableChannel.OnPacketReceived += (reliablePacket) =>
-{
-    Interlocked.Increment(ref reliableMessageCount);
-    Interlocked.Increment(ref messagesSend);
-    if (messagesSend >= 10000)
-        return;
-    clientReliableChannel.Send(new IPEndPoint(IPAddress.Loopback, 5000), bytes, 0, bytes.Length);
-};
-
-Stopwatch watch = new Stopwatch();
-watch.Start();
-serverReliableChannel.Send(new IPEndPoint(IPAddress.Loopback, 6000), bytes, 0, bytes.Length);
-clientReliableChannel.Send(new IPEndPoint(IPAddress.Loopback, 5000), bytes, 0, bytes.Length);
-while (watch.ElapsedMilliseconds < 1000)
-{
-    clientReliableChannel.Update();
-    serverReliableChannel.Update();
+    server.Pool(out var packet, out var eventsLeft);
+    client.Pool(out var packet2, out var eventsLeft2);
+    Thread.Sleep(10);
 }
-Console.WriteLine($"Reliable messages: {reliableMessageCount}, unreliable messages to transfer reliable {unreliableMessageCount}");
-Console.WriteLine($"Channel reliability test: {reliableMessageCount}/10000");
+client.Send(bytes, 0, bytes.Length, SendMode.Unreliable);
+while (true)
+{
+    if(server.Pool(out var packet, out var eventsLeft))
+        Console.WriteLine($"Received: {Encoding.UTF8.GetString(packet.Data, 0, packet.Data.Length)}");
+    client.Pool(out var packet2, out var eventsLeft2);
+}
+
