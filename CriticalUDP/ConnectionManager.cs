@@ -26,6 +26,7 @@ public class ClientConnectionManager : IConnectionManager
         if (_onConnectAction == null)
             return;
         _isConnected = true;
+        _lastReceivedPacket = DateTime.Now;
         _onConnectAction?.Invoke(true);
         OnConnected?.Invoke(0);
         _onConnectAction = null;
@@ -35,6 +36,7 @@ public class ClientConnectionManager : IConnectionManager
     {
         if (!_isConnected)
             return;
+        _isConnected = false;
         OnDisconnected?.Invoke(0);
     }
 
@@ -56,8 +58,7 @@ public class ClientConnectionManager : IConnectionManager
         
         if (_lastReceivedPacket.AddMilliseconds(_timeOutMs) >= DateTime.Now) return;
         _socket.Send(ServerConnectionManager.CreateConnectionPacket(_serverEndpoint, PacketType.Disconnect));
-        _isConnected = false;
-        OnDisconnected?.Invoke(0);
+        OnDisconnectionPacket(_serverEndpoint);
     }
 
     public bool IsConnected(EndPoint endPoint, out int socketId)
@@ -141,6 +142,7 @@ public class ServerConnectionManager : IConnectionManager
         socketId = _nextSocketId++;
         _endpointToId.Add(packet.EndPoint, socketId);
         _idToEndpoint.Add(socketId, packet.EndPoint);
+        _lastReceivedPacket.Add(packet.EndPoint, DateTime.Now);
         _socket.Send(CreateConnectionPacket(packet.EndPoint, PacketType.Connect));
         OnConnected?.Invoke(socketId);
     }
@@ -160,6 +162,7 @@ public class ServerConnectionManager : IConnectionManager
             return;
         _endpointToId.Remove(endpoint);
         _idToEndpoint.Remove(socketId);
+        _lastReceivedPacket.Remove(endpoint);
         _socket.Send(CreateConnectionPacket(endpoint, PacketType.Disconnect));
         OnDisconnected?.Invoke(socketId);
     }

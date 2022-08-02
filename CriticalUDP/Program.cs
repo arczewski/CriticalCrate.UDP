@@ -13,6 +13,7 @@ using var client = new CriticalSocket(512);
 
 server.OnConnected += (socketId) => Console.WriteLine($"Client connected - {socketId}");
 server.OnDisconnected += (socketId) => Console.WriteLine($"Client disconnected - {socketId}");
+client.OnDisconnected += (socketId) => Console.WriteLine("Clientside disconnected");
 
 server.Listen(5000);
 bool isConnected = false;
