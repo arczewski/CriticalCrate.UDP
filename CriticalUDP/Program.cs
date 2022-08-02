@@ -10,12 +10,16 @@ const string message =
 const string shortMessage = "asddsa";
 using var server = new CriticalSocket();
 using var client = new CriticalSocket();
-
-server.OnConnected += (socketId) => Console.WriteLine($"Client connected - {socketId}");
+int clientSocketId = 0;
+server.OnConnected += (socketId) =>
+{
+    clientSocketId = socketId;
+    Console.WriteLine($"Client connected - {socketId}");
+};
 server.OnDisconnected += (socketId) => Console.WriteLine($"Client disconnected - {socketId}");
 client.OnDisconnected += (socketId) => Console.WriteLine("Clientside disconnected");
 
-var serverEndpoint = new IPEndPoint(IPAddress.Parse("10.0.2.15"), 5000);
+var serverEndpoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 5000);
 server.Listen(serverEndpoint);
 bool isConnected = false;
 client.Connect(serverEndpoint, 1000, (result) =>
@@ -27,17 +31,40 @@ client.Connect(serverEndpoint, 1000, (result) =>
 byte[] bytes = Encoding.UTF8.GetBytes(shortMessage);
 while (!isConnected)
 {
-    server.Pool(out var packet, out var eventsLeft);
-    client.Pool(out var packet2, out var eventsLeft2);
-    Thread.Sleep(12);
+    while (server.Pool(out var packet, out var eventsLeft))
+    {
+        packet.Dispose();
+    }
+
+    while (client.Pool(out var packet2, out var eventsLeft2))
+    {
+        packet2.Dispose();
+    }
+
+    Thread.Sleep(15);
 }
 
-client.Send(bytes, 0, bytes.Length, SendMode.Reliable);
-while (true)
+EndPoint clientEndpoint = server.ConnectionManager.GetEndPoint(clientSocketId);
+client.Send(bytes, 0, bytes.Length, SendMode.Unreliable);
+server.Send(clientEndpoint, bytes, 0, bytes.Length, SendMode.Unreliable);
+Stopwatch watch = new Stopwatch();
+watch.Start();
+int messages = 0;
+while (watch.ElapsedMilliseconds < 5000)
 {
-    server.Pool(out var packet, out var eventsLeft);
-    client.Pool(out var packet2, out var eventsLeft2);
-    Console.WriteLine($"Client ping: {client.PingManager.GetPing(serverEndpoint)}");
-    //client.Send(bytes, 0, bytes.Length, SendMode.Reliable);
-    Thread.Sleep(100);
+    while (server.Pool(out var packet, out var eventsLeft))
+    {
+        packet.Dispose();
+        client.Send(bytes, 0, bytes.Length, SendMode.Unreliable);
+        messages++;
+    }
+
+    while (client.Pool(out var packet2, out var eventsLeft2))
+    {
+        packet2.Dispose();
+        server.Send(clientEndpoint, bytes, 0, bytes.Length, SendMode.Unreliable);
+        messages++;
+    }
 }
+
+Console.WriteLine($"Reliable messages per seconds: {messages / 5.0f}");

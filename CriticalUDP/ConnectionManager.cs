@@ -3,11 +3,11 @@ using System.Net;
 
 namespace CriticalCrate.UDP;
 
-public class ClientConnectionManager : IConnectionManager
+public class ClientConnectionManager : BaseConnectionManager
 {
-    public event Action<int> OnConnected;
-    public event Action<int> OnDisconnected;
-    
+    public override event Action<int> OnConnected;
+    public override event Action<int> OnDisconnected;
+
     private UDPSocket _socket;
     private IPEndPoint _serverEndpoint;
     private int _timeOutMs = 10000;
@@ -22,7 +22,8 @@ public class ClientConnectionManager : IConnectionManager
         _socket = socket;
         _timeOutMs = timeOutMs;
     }
-    public void OnConnectionPacket(Packet packet)
+
+    internal override void OnConnectionPacket(Packet packet)
     {
         if (_isConnected)
             return;
@@ -35,7 +36,7 @@ public class ClientConnectionManager : IConnectionManager
         _onConnectAction = null;
     }
 
-    public void OnDisconnectionPacket(EndPoint packet)
+    internal override void OnDisconnectionPacket(EndPoint packet)
     {
         if (!_isConnected)
             return;
@@ -43,12 +44,12 @@ public class ClientConnectionManager : IConnectionManager
         OnDisconnected?.Invoke(0);
     }
 
-    public void OnPacket(Packet packet)
+    internal override void OnPacket(Packet packet)
     {
         _lastReceivedPacket = DateTime.Now;
     }
 
-    public void CheckConnectionTimeout()
+    internal override void CheckConnectionTimeout()
     {
         if (!_isConnected)
         {
@@ -59,34 +60,35 @@ public class ClientConnectionManager : IConnectionManager
                 Connect(_serverEndpoint, _connectingTimeoutMs, _onConnectAction);
                 return;
             }
+
             _onConnectAction = null;
             _isConnected = false;
             _onConnectAction?.Invoke(false);
             return;
         }
-        
+
         if (_lastReceivedPacket.AddMilliseconds(_timeOutMs) >= DateTime.Now) return;
         _socket.Send(ServerConnectionManager.CreateConnectionPacket(_serverEndpoint, PacketType.Disconnect));
         OnDisconnectionPacket(_serverEndpoint);
     }
 
-    public bool IsConnected(EndPoint endPoint, out int socketId)
+    public override bool IsConnected(EndPoint endPoint, out int socketId)
     {
         socketId = 0;
         return _isConnected;
     }
 
-    public int GetLowestConnectedMTU()
+    public override int GetLowestConnectedMTU()
     {
         return _discoveredMtu;
     }
 
-    public int GetMTU(int socketId)
+    public override int GetMTU(int socketId)
     {
         return _discoveredMtu;
     }
 
-    public EndPoint GetEndPoint(int socketId)
+    public override EndPoint GetEndPoint(int socketId)
     {
         return _serverEndpoint;
     }
@@ -103,22 +105,35 @@ public class ClientConnectionManager : IConnectionManager
 
 public interface IConnectionManager
 {
-     event Action<int> OnConnected;
-     event Action<int> OnDisconnected;
-     void OnConnectionPacket(Packet packet);
-     void OnDisconnectionPacket(EndPoint packet);
-     void OnPacket(Packet packet);
-     void CheckConnectionTimeout();
-     bool IsConnected(EndPoint endPoint, out int socketId);
-     int GetLowestConnectedMTU();
-     int GetMTU(int socketId);
-     EndPoint GetEndPoint(int socketId);
+    event Action<int> OnConnected;
+    event Action<int> OnDisconnected;
+    bool IsConnected(EndPoint endPoint, out int socketId);
+    int GetLowestConnectedMTU();
+    int GetMTU(int socketId);
+    EndPoint GetEndPoint(int socketId);
 }
 
-public class ServerConnectionManager : IConnectionManager
+public abstract class BaseConnectionManager : IConnectionManager
 {
-    public event Action<int> OnConnected;
-    public event Action<int> OnDisconnected;
+    public abstract event Action<int>? OnConnected;
+    public abstract event Action<int>? OnDisconnected;
+    public abstract bool IsConnected(EndPoint endPoint, out int socketId);
+
+    public abstract int GetLowestConnectedMTU();
+
+    public abstract int GetMTU(int socketId);
+
+    public abstract EndPoint GetEndPoint(int socketId);
+    internal abstract void OnConnectionPacket(Packet packet);
+    internal abstract void OnDisconnectionPacket(EndPoint packet);
+    internal abstract void OnPacket(Packet packet);
+    internal abstract void CheckConnectionTimeout();
+}
+
+public class ServerConnectionManager : BaseConnectionManager
+{
+    public override event Action<int> OnConnected;
+    public override event Action<int> OnDisconnected;
 
     private int _maxConnection;
     private UDPSocket _socket;
@@ -130,7 +145,7 @@ public class ServerConnectionManager : IConnectionManager
     private int _timeoutMs;
 
     private int _lowestClientMtu = UDPSocket.MinMTU;
-    
+
     private int _nextSocketId = int.MinValue;
 
     public ServerConnectionManager(int timeoutMs, int maxConnection, UDPSocket socket)
@@ -140,29 +155,30 @@ public class ServerConnectionManager : IConnectionManager
         _timeoutMs = timeoutMs;
     }
 
-    public void CheckConnectionTimeout()
+    internal override void CheckConnectionTimeout()
     {
         _endPointsToDisconnect.Clear();
         foreach (var keyValue in _lastReceivedPacket)
         {
-            if(keyValue.Value.AddMilliseconds(_timeoutMs) < DateTime.Now)
+            if (keyValue.Value.AddMilliseconds(_timeoutMs) < DateTime.Now)
                 _endPointsToDisconnect.Add(keyValue.Key);
         }
+
         foreach (var endpoint in _endPointsToDisconnect)
             OnDisconnectionPacket(endpoint);
     }
 
-    public bool IsConnected(EndPoint endPoint, out int socketId)
+    public override bool IsConnected(EndPoint endPoint, out int socketId)
     {
         return _endpointToId.TryGetValue(endPoint, out socketId);
     }
 
-    public int GetLowestConnectedMTU()
+    public override int GetLowestConnectedMTU()
     {
         return _lowestClientMtu;
     }
 
-    public int GetMTU(int socketId)
+    public override int GetMTU(int socketId)
     {
         if (!_idToEndpoint.TryGetValue(socketId, out var endPoint))
             return _lowestClientMtu;
@@ -171,7 +187,7 @@ public class ServerConnectionManager : IConnectionManager
         return mtu;
     }
 
-    public EndPoint GetEndPoint(int socketId)
+    public override EndPoint GetEndPoint(int socketId)
     {
         _idToEndpoint.TryGetValue(socketId, out var endPoint);
         return endPoint;
@@ -182,7 +198,7 @@ public class ServerConnectionManager : IConnectionManager
         return _idToEndpoint.TryGetValue(socketId, out endPoint);
     }
 
-    public void OnConnectionPacket(Packet packet)
+    internal override void OnConnectionPacket(Packet packet)
     {
         if (_endpointToId.TryGetValue(packet.EndPoint, out var socketId))
         {
@@ -192,7 +208,7 @@ public class ServerConnectionManager : IConnectionManager
 
         if (_lowestClientMtu > packet.Position)
             _lowestClientMtu = packet.Position;
-        
+
         socketId = _nextSocketId++;
         _mtu.Add(packet.EndPoint, packet.Position);
         _endpointToId.Add(packet.EndPoint, socketId);
@@ -211,7 +227,7 @@ public class ServerConnectionManager : IConnectionManager
         return packet;
     }
 
-    public void OnDisconnectionPacket(EndPoint endpoint)
+    internal override void OnDisconnectionPacket(EndPoint endpoint)
     {
         if (!_endpointToId.TryGetValue(endpoint, out var socketId))
             return;
@@ -223,7 +239,7 @@ public class ServerConnectionManager : IConnectionManager
         OnDisconnected?.Invoke(socketId);
     }
 
-    public void OnPacket(Packet packet)
+    internal override void OnPacket(Packet packet)
     {
         _lastReceivedPacket[packet.EndPoint] = DateTime.Now;
     }

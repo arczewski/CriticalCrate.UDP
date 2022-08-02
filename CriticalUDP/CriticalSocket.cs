@@ -16,9 +16,10 @@ namespace CriticalCrate.UDP
         public event Action<int> OnDisconnected;
         
         public PingManager PingManager { get; private set; }
+        public IConnectionManager ConnectionManager => _connectionManager;
+        private BaseConnectionManager _connectionManager;
         
         private UDPSocket _socket;
-        private IConnectionManager _connectionManager;
         private UnreliableChannel _unreliableChannel;
         private Dictionary<int, ReliableChannel> _reliableChannels;
         private ConcurrentQueue<Packet> _pendingPackets;
