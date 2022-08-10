@@ -47,7 +47,7 @@ namespace CriticalCrate.UDP
             if((_listenSocket.AddressFamily & AddressFamily.InterNetwork) == AddressFamily.InterNetwork)
                 _listenSocket.DontFragment = true;
             SetupSocketEvents();
-            if (!_listenSocket.ReceiveMessageFromAsync(_readEvent))
+            if (!_listenSocket.ReceiveFromAsync(_readEvent))
                 ProcessRead(_readEvent);
         }
 
@@ -64,6 +64,7 @@ namespace CriticalCrate.UDP
                 var packet = _packets.Take(cancellationToken);
                 _writeEvent.SetBuffer(0, packet.Position);
                 _writeEvent.RemoteEndPoint = packet.EndPoint;
+               // _writeEvent.SetBuffer(new Memory<byte>(_writeEvent.Buffer, _writeEvent.Offset, packet.Position));
                 packet.CopyTo(_writeEvent.Buffer, _writeEvent.Offset);
                 packet.Dispose();
                 if (!_listenSocket.SendToAsync(_writeEvent))
@@ -99,14 +100,14 @@ namespace CriticalCrate.UDP
         {
             switch (e.LastOperation)
             {
-                case SocketAsyncOperation.ReceiveMessageFrom:
+                case SocketAsyncOperation.ReceiveFrom:
                     ProcessRead(e);
                     break;
                 case SocketAsyncOperation.SendTo:
                     ProcessWrite(e);
                     break;
                 default:
-                    throw new ArgumentException("The last operation completed on the socket was not a receive or send");
+                    return;
             }
         }
 
@@ -124,7 +125,7 @@ namespace CriticalCrate.UDP
                 packet.Assign((IPEndPoint)e.RemoteEndPoint);
                 packet.CopyFrom(e.Buffer, e.Offset, e.BytesTransferred);
                 OnPacketReceived?.Invoke(packet);
-                if (!_listenSocket.ReceiveMessageFromAsync(e))
+                if (!_listenSocket.ReceiveFromAsync(e))
                     ProcessRead(e);
             }
         }
