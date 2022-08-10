@@ -14,8 +14,8 @@ namespace CriticalCrate.UDP
 
     public class CriticalSocket : IDisposable
     {
-        public event Action<int> OnConnected;
-        public event Action<int> OnDisconnected;
+        public event Action<EndPoint> OnConnected;
+        public event Action<EndPoint> OnDisconnected;
 
         public PingManager PingManager { get; private set; }
         public IConnectionManager ConnectionManager => _connectionManager;
@@ -23,7 +23,7 @@ namespace CriticalCrate.UDP
 
         private UDPSocket _socket;
         private UnreliableChannel _unreliableChannel;
-        private Dictionary<int, ReliableChannel> _reliableChannels;
+        private Dictionary<EndPoint, ReliableChannel> _reliableChannels;
         private ConcurrentQueue<Packet> _pendingPackets;
         private ConcurrentQueue<Packet> _pendingReliable;
 
@@ -40,7 +40,7 @@ namespace CriticalCrate.UDP
             _socket = new UDPSocket();
             _timeoutMs = timeoutMs;
             PingManager = new PingManager(_socket);
-            _reliableChannels = new Dictionary<int, ReliableChannel>();
+            _reliableChannels = new Dictionary<EndPoint, ReliableChannel>();
             _unreliableChannel = new UnreliableChannel(_socket, PingManager);
             _pendingPackets = new ConcurrentQueue<Packet>();
             _pendingReliable = new ConcurrentQueue<Packet>();
@@ -72,7 +72,7 @@ namespace CriticalCrate.UDP
             _connectionManager.CheckConnectionTimeout();
             foreach (var keyValue in _reliableChannels)
             {
-                var endPoint = _connectionManager.GetEndPoint(keyValue.Key);
+                var endPoint = keyValue.Key;
                 keyValue.Value.UpdateRTT(PingManager.GetPing(endPoint));
                 keyValue.Value.Update();
             }
@@ -105,13 +105,13 @@ namespace CriticalCrate.UDP
                 return Pool(out packet, out eventsLeft);
             }
 
-            if (!_connectionManager.IsConnected(packet.EndPoint, out int socketId))
+            if (!_connectionManager.IsConnected(packet.EndPoint))
                 return Pool(out packet, out eventsLeft);
             _connectionManager.OnPacket(packet);
 
             if (((PacketType)packet.Data[0] & PacketType.Reliable) == PacketType.Reliable)
             {
-                if (!_reliableChannels.TryGetValue(socketId, out var channel))
+                if (!_reliableChannels.TryGetValue(packet.EndPoint, out var channel))
                     return Pool(out packet, out eventsLeft);
                 channel.OnReceive(packet);
                 return Pool(out packet, out eventsLeft);
@@ -146,7 +146,7 @@ namespace CriticalCrate.UDP
             bool isUnreliable = sendMode == SendMode.Unreliable;
             int socketId = 0;
             
-            if (!_connectionManager.IsConnected(endPoint, out socketId))
+            if (!_connectionManager.IsConnected(endPoint))
                 throw new NotImplementedException("Socket needs to be connected to send data!");
             
             if (isUnreliable)
@@ -157,7 +157,7 @@ namespace CriticalCrate.UDP
                 return;
             }
             
-            _reliableChannels[socketId].Send(endPoint, data, offset, size);
+            _reliableChannels[endPoint].Send(endPoint, data, offset, size);
         }
 
         public void Send(byte[] data, int offset, int size, SendMode sendMode = SendMode.Unreliable)
@@ -174,21 +174,21 @@ namespace CriticalCrate.UDP
             return channel;
         }
 
-        private void HandleDisconnected(int socketId)
+        private void HandleDisconnected(EndPoint endPoint)
         {
-            if (_reliableChannels.Remove(socketId, out var channel))
+            if (_reliableChannels.Remove(endPoint, out var channel))
                 channel.Dispose();
-            PingManager.OnDisconnected(_connectionManager.GetEndPoint(socketId));
-            OnDisconnected?.Invoke(socketId);
+            PingManager.OnDisconnected(endPoint);
+            OnDisconnected?.Invoke(endPoint);
         }
 
-        private void HandleConnected(int socketId)
+        private void HandleConnected(EndPoint endPoint)
         {
-            var newChannel = CreateChannel(_socket, _connectionManager.GetMTU(socketId));
-            if (!_reliableChannels.TryAdd(socketId, newChannel))
+            var newChannel = CreateChannel(_socket, _connectionManager.GetMTU(endPoint));
+            if (!_reliableChannels.TryAdd(endPoint, newChannel))
                 newChannel.Dispose();
-            PingManager.OnConnected(_connectionManager.GetEndPoint(socketId));
-            OnConnected?.Invoke(socketId);
+            PingManager.OnConnected(endPoint);
+            OnConnected?.Invoke(endPoint);
         }
 
         private void OnReliablePacketReceived(ReliableIncomingPacket reliablePacket)

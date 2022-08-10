@@ -26,7 +26,7 @@ if (input == "s")
 {
     socket.Listen(new IPEndPoint(IPAddress.Parse(ip), port), 10);
     EndPoint clientEndpoint = null;
-    socket.OnConnected += socketId => clientEndpoint = socket.ConnectionManager.GetEndPoint(socketId);
+    socket.OnConnected += endPoint => clientEndpoint = endPoint;
     while (clientEndpoint == null)
     {
         while (socket.Pool(out var packet, out var eventsLeft))
