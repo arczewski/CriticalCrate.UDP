@@ -52,7 +52,7 @@ namespace CriticalCrate.UDP
         private byte _sendSeq = 0;
         private readonly int _packetSendWindow;
         private DateTime _lastAckDate;
-        private int _resendAfterMs = 100;
+        private int _resendAfterMs = 300;
         private int _loopSequenceThreshold = 16;
 
         public ReliableChannel(UDPSocket socket, int mtu, int packetSendWindow = 60 * 1024)

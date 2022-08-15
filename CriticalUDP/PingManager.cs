@@ -25,10 +25,11 @@ namespace CriticalCrate.UDP
 
         internal void OnConnected(EndPoint endPoint)
         {
-            _trackedPings.Add(endPoint, new PingData()
+            var pingData = new PingData(300)
             {
-                NextPing = DateTime.Now
-            });
+                NextPing = DateTime.Now,
+            };
+            _trackedPings.Add(endPoint, pingData);
         }
 
         internal void OnDisconnected(EndPoint endPoint)
@@ -90,6 +91,14 @@ namespace CriticalCrate.UDP
         private byte _seq = 0;
         private long _accumulated;
         public long Ping { get; private set; }
+
+        public PingData(int initialPing)
+        {
+            _measuredPingsMs.Enqueue(initialPing);
+            _accumulated = initialPing;
+            _measuredPingsMs.Enqueue(initialPing);
+            Ping = initialPing;
+        }
 
         public void TrackSend(ref Packet packet, DateTime now)
         {
