@@ -341,7 +341,7 @@ namespace CriticalCrate.UDP
             packet.Assign(endPoint);
             ReliableChannel.AddHeader(ref packet, seq, (short)i, packetType);
             ReliableChannel.AddData(ref packet, buffer, offset, size);
-            packet.SendDispose = false;
+            packet.BlockSendDispose = true;
             return packet;
         }
 

@@ -11,7 +11,7 @@ namespace CriticalCrate.UDP
         public int Position { get; private set; }
         
         private ArrayPool<byte> _pool;
-        public bool SendDispose = true;
+        public bool BlockSendDispose;
 
         internal Packet(int bufferSize, ArrayPool<byte> pool)
         {
@@ -19,6 +19,7 @@ namespace CriticalCrate.UDP
             EndPoint = null;
             Data = _pool.Rent(bufferSize);
             Position = 0;
+            BlockSendDispose = false;
         }
 
         public void Dispose()
