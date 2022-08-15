@@ -66,7 +66,8 @@ namespace CriticalCrate.UDP
                 _writeEvent.RemoteEndPoint = packet.EndPoint;
                // _writeEvent.SetBuffer(new Memory<byte>(_writeEvent.Buffer, _writeEvent.Offset, packet.Position));
                 packet.CopyTo(_writeEvent.Buffer, _writeEvent.Offset);
-                packet.Dispose();
+                if(packet.SendDispose)
+                    packet.Dispose();
                 if (!_listenSocket.SendToAsync(_writeEvent))
                     ProcessWrite(_writeEvent);
             }

@@ -11,6 +11,7 @@ namespace CriticalCrate.UDP
         public int Position { get; private set; }
         
         private ArrayPool<byte> _pool;
+        public bool SendDispose = true;
 
         internal Packet(int bufferSize, ArrayPool<byte> pool)
         {

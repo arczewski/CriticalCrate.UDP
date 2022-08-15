@@ -68,12 +68,13 @@ namespace CriticalCrate.UDP
             var packet = new Packet(size, ArrayPool<byte>.Shared);
             packet.Assign(endPoint);
             packet.CopyFrom(data, offset, size);
+
             _sendQueue.Enqueue(packet);
         }
 
         public void UpdateRTT(long rtt)
         {
-            _resendAfterMs = Math.Max(20, (int)(rtt * 1.2f));
+            _resendAfterMs = Math.Max(5, (int)(rtt * 1.2f));
         }
 
         public void Update()
@@ -90,8 +91,8 @@ namespace CriticalCrate.UDP
 
                 if (_outgoingPacket.IsCompleted)
                 {
-                    _sendQueue.TryDequeue(out bigPacket);
                     bigPacket.Dispose();
+                    _sendQueue.TryDequeue(out bigPacket);
                     _outgoingPacket.Reset();
                     _lastAckDate = _lastAckDate - TimeSpan.FromMilliseconds(_resendAfterMs);
                     continue;
@@ -296,7 +297,6 @@ namespace CriticalCrate.UDP
         private readonly Packet[] _packets;
         private int _partsCount;
         private short _ack = -1;
-        private bool _hasPackets;
 
         public ReliableOutgoingPacket(int maxPacketSize)
         {
@@ -309,7 +309,7 @@ namespace CriticalCrate.UDP
 
         public bool IsCompleted => _partsCount == _ack + 1;
         public int Seq { get; private set; }
-        public bool HasPackets => _hasPackets;
+        public bool HasPackets => _partsCount > 0;
 
         public void Ack(short ack)
         {
@@ -318,7 +318,6 @@ namespace CriticalCrate.UDP
 
         public void Split(byte seq, byte[] buffer, int offset, int size, EndPoint endPoint, ArrayPool<byte> pool)
         {
-            _hasPackets = true;
             _ack = -1;
             Seq = seq;
             int divide = size / _maxPacketSize;
@@ -342,6 +341,7 @@ namespace CriticalCrate.UDP
             packet.Assign(endPoint);
             ReliableChannel.AddHeader(ref packet, seq, (short)i, packetType);
             ReliableChannel.AddData(ref packet, buffer, offset, size);
+            packet.SendDispose = false;
             return packet;
         }
 
@@ -353,7 +353,6 @@ namespace CriticalCrate.UDP
 
         public void Reset()
         {
-            _hasPackets = false;
             for (int i = _ack + 1; i < _partsCount; i++)
                 _packets[i].Dispose();
             _partsCount = 0;
