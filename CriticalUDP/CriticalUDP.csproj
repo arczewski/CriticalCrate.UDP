@@ -8,6 +8,8 @@
         <AssemblyName>CriticalCrate.UDP</AssemblyName>
         <RootNamespace>CriticalCrate.UDP</RootNamespace>
         <LangVersion>default</LangVersion>
+        <PackageVersion>0.0.2</PackageVersion>
+        <AssemblyVersion>0.0.2</AssemblyVersion>
     </PropertyGroup>
 
 </Project>
