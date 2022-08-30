@@ -33,8 +33,8 @@ namespace CriticalCrate.UDP
             Console.WriteLine($"Discovered MTU: {_discoveredMtu}");
             _isConnected = true;
             _lastReceivedPacket = DateTime.Now;
-            _onConnectAction?.Invoke(true);
             OnConnected?.Invoke(packet.EndPoint);
+			 _onConnectAction?.Invoke(true);
             _onConnectAction = null;
         }
 
