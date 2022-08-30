@@ -10,8 +10,8 @@ namespace CriticalCrate.UDP
     public delegate void OnPacketReceived(Packet packet);
     public class UDPSocket : IDisposable
     {
-        public const int MaxMTU = 1500;
-        public const int MinMTU = 576;
+        public const int MaxMTU = 508;
+        public const int MinMTU = 508;
         public event OnPacketReceived OnPacketReceived;
         
         private SocketAsyncEventArgs _readEvent;
