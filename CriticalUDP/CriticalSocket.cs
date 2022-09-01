@@ -188,7 +188,7 @@ namespace CriticalCrate.UDP
 
         private void OnReliablePacketReceived(ReliableIncomingPacket reliablePacket)
         {
-            _pendingReliable.Enqueue(reliablePacket.GetResultPacket());
+            _pendingReliable.Enqueue(reliablePacket.GetPacket());
         }
 
         private void OnPacketReceived(Packet packet)
