@@ -10,26 +10,25 @@ namespace CriticalCrate.UDP
     public delegate void OnPacketReceived(Packet packet);
     public class UDPSocket : IDisposable
     {
-        public const int MaxMTU = 508;
-        public const int MinMTU = 508;
+        public int MTU => 508; //https://stackoverflow.com/questions/1098897/what-is-the-largest-safe-udp-packet-size-on-the-internet
         public event OnPacketReceived OnPacketReceived;
         
         private SocketAsyncEventArgs _readEvent;
         private SocketAsyncEventArgs _writeEvent;
-        private Socket _listenSocket;
+        private readonly Socket _listenSocket;
 
-        private BlockingCollection<Packet> _packets;
-        private SemaphoreSlim _sendSemaphore;
+        private readonly BlockingCollection<Packet> _packets;
+        private readonly SemaphoreSlim _sendSemaphore;
         private Thread _sendThread;
-        private CancellationTokenSource _sendThreadCancelation;
+        private readonly CancellationTokenSource _sendThreadCancellation;
         
 
         public UDPSocket()
         {
             _sendSemaphore = new SemaphoreSlim(1, 1);
             _packets = new BlockingCollection<Packet>();
-            _sendThreadCancelation = new CancellationTokenSource();
-            _sendThread = new Thread(async () => ProcessSendQueue(_sendThreadCancelation.Token));
+            _sendThreadCancellation = new CancellationTokenSource();
+            _sendThread = new Thread(async () => ProcessSendQueue(_sendThreadCancellation.Token));
             _sendThread.Start();
 
             _listenSocket?.Dispose();
@@ -64,7 +63,6 @@ namespace CriticalCrate.UDP
                 var packet = _packets.Take(cancellationToken);
                 _writeEvent.SetBuffer(0, packet.Position);
                 _writeEvent.RemoteEndPoint = packet.EndPoint;
-               // _writeEvent.SetBuffer(new Memory<byte>(_writeEvent.Buffer, _writeEvent.Offset, packet.Position));
                 packet.CopyTo(_writeEvent.Buffer, _writeEvent.Offset);
                 if(!packet.BlockSendDispose)
                     packet.Dispose();
@@ -82,12 +80,12 @@ namespace CriticalCrate.UDP
         private void SetupSocketEvents()
         {
             _readEvent = new SocketAsyncEventArgs();
-            _readEvent.SetBuffer(new byte[MaxMTU], 0, MaxMTU);
+            _readEvent.SetBuffer(new byte[MTU], 0, MTU);
             _readEvent.RemoteEndPoint = new IPEndPoint(IPAddress.Parse("1.1.1.1"), 0);
             _readEvent.Completed += OnIOCompleted;
 
             _writeEvent = new SocketAsyncEventArgs();
-            _writeEvent.SetBuffer(new byte[MaxMTU], 0, MaxMTU);
+            _writeEvent.SetBuffer(new byte[MTU], 0, MTU);
             _writeEvent.RemoteEndPoint = new IPEndPoint(IPAddress.Parse("1.1.1.1"), 0);
             _writeEvent.Completed += OnIOCompleted;
         }
@@ -114,7 +112,7 @@ namespace CriticalCrate.UDP
 
         private void ProcessWrite(SocketAsyncEventArgs e)
         {
-            _writeEvent.SetBuffer(0, MaxMTU);
+            _writeEvent.SetBuffer(0, MTU);
             _sendSemaphore.Release();
         }
 
@@ -133,7 +131,7 @@ namespace CriticalCrate.UDP
 
         public void Dispose()
         {
-            _sendThreadCancelation.Cancel();
+            _sendThreadCancellation.Cancel();
         }
     }
 }

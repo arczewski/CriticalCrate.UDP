@@ -55,12 +55,12 @@ namespace CriticalCrate.UDP
         private int _resendAfterMs = 300;
         private int _loopSequenceThreshold = 16;
 
-        public ReliableChannel(UDPSocket socket, int mtu, int packetSendWindow = 60 * 1024)
+        public ReliableChannel(UDPSocket socket, int packetSendWindow = 60 * 1024)
         {
             _socket = socket;
             _packetSendWindow = packetSendWindow;
-            _incomingPacket = new ReliableIncomingPacket(mtu);
-            _outgoingPacket = new ReliableOutgoingPacket(mtu);
+            _incomingPacket = new ReliableIncomingPacket(socket.MTU);
+            _outgoingPacket = new ReliableOutgoingPacket(socket.MTU);
         }
 
         public void Send(EndPoint endPoint, byte[] data, int offset, int size)

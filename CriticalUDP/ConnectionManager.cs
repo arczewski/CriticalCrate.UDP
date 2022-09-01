@@ -17,7 +17,6 @@ namespace CriticalCrate.UDP
         private Action<bool>? _onConnectAction;
         private bool _isConnected;
         private int _connectingTimeoutMs = 100;
-        private int _discoveredMtu = UDPSocket.MaxMTU;
 
         public ClientConnectionManager(UDPSocket socket, int timeOutMs = 1000)
         {
@@ -29,8 +28,6 @@ namespace CriticalCrate.UDP
         {
             if (_isConnected)
                 return;
-            _discoveredMtu = packet.Position;
-            Console.WriteLine($"Discovered MTU: {_discoveredMtu}");
             _isConnected = true;
             _lastReceivedPacket = DateTime.Now;
             OnConnected?.Invoke(packet.EndPoint);
@@ -56,13 +53,6 @@ namespace CriticalCrate.UDP
             if (!_isConnected)
             {
                 if (_lastReceivedPacket.AddMilliseconds(_connectingTimeoutMs) >= DateTime.Now) return;
-                if (_discoveredMtu > UDPSocket.MinMTU)
-                {
-                    _discoveredMtu -= 256;
-                    Connect(_serverEndpoint, _connectingTimeoutMs, _onConnectAction);
-                    return;
-                }
-
                 _onConnectAction = null;
                 _isConnected = false;
                 _onConnectAction?.Invoke(false);
@@ -79,23 +69,13 @@ namespace CriticalCrate.UDP
             return _isConnected;
         }
 
-        public override int GetLowestConnectedMTU()
-        {
-            return _discoveredMtu;
-        }
-
-        public override int GetMTU(EndPoint endPoint)
-        {
-            return _discoveredMtu;
-        }
-        
         public void Connect(IPEndPoint endPoint, int connectTimeoutMs, Action<bool> onConnected)
         {
             _onConnectAction = onConnected;
             _connectingTimeoutMs = connectTimeoutMs;
             _lastReceivedPacket = DateTime.Now;
             _serverEndpoint = endPoint;
-            _socket.Send(ServerConnectionManager.CreateConnectionPacket(endPoint, PacketType.Connect, _discoveredMtu));
+            _socket.Send(ServerConnectionManager.CreateConnectionPacket(endPoint, PacketType.Connect, _socket.MTU));
         }
     }
 
@@ -104,8 +84,6 @@ namespace CriticalCrate.UDP
         event Action<EndPoint> OnConnected;
         event Action<EndPoint> OnDisconnected;
         bool IsConnected(EndPoint endPoint);
-        int GetLowestConnectedMTU();
-        int GetMTU(EndPoint endPoint);
     }
 
     public abstract class BaseConnectionManager : IConnectionManager
@@ -113,11 +91,6 @@ namespace CriticalCrate.UDP
         public abstract event Action<EndPoint>? OnConnected;
         public abstract event Action<EndPoint>? OnDisconnected;
         public abstract bool IsConnected(EndPoint endPoint);
-
-        public abstract int GetLowestConnectedMTU();
-
-        public abstract int GetMTU(EndPoint endPoint);
-        
         internal abstract void OnConnectionPacket(Packet packet);
         internal abstract void OnDisconnectionPacket(EndPoint packet);
         internal abstract void OnPacket(Packet packet);
@@ -132,11 +105,8 @@ namespace CriticalCrate.UDP
         private int _maxConnection;
         private UDPSocket _socket;
         private Dictionary<EndPoint, DateTime> _lastReceivedPacket = new Dictionary<EndPoint, DateTime>();
-        private Dictionary<EndPoint, int> _mtu = new Dictionary<EndPoint, int>();
         private List<EndPoint> _endPointsToDisconnect = new List<EndPoint>();
         private int _timeoutMs;
-
-        private int _lowestClientMtu = UDPSocket.MinMTU;
 
         public ServerConnectionManager(int timeoutMs, int maxConnection, UDPSocket socket)
         {
@@ -160,33 +130,16 @@ namespace CriticalCrate.UDP
 
         public override bool IsConnected(EndPoint endPoint)
         {
-            return _mtu.ContainsKey(endPoint);
-        }
-
-        public override int GetLowestConnectedMTU()
-        {
-            return _lowestClientMtu;
-        }
-
-        public override int GetMTU(EndPoint endPoint)
-        {
-            if (!_mtu.TryGetValue(endPoint, out int mtu))
-                return _lowestClientMtu;
-            return mtu;
+            return _lastReceivedPacket.ContainsKey(endPoint);
         }
 
         internal override void OnConnectionPacket(Packet packet)
         {
-            if (_mtu.TryGetValue(packet.EndPoint, out var mtu))
+            if (_lastReceivedPacket.TryGetValue(packet.EndPoint, out var lastPacketTime))
             {
                 _socket.Send(CreateConnectionPacket(packet.EndPoint, PacketType.Connect, packet.Position));
                 return;
             }
-
-            if (_lowestClientMtu > packet.Position)
-                _lowestClientMtu = packet.Position;
-            
-            _mtu.Add(packet.EndPoint, packet.Position);
             _lastReceivedPacket.Add(packet.EndPoint, DateTime.Now);
             _socket.Send(CreateConnectionPacket(packet.EndPoint, PacketType.Connect, packet.Position));
             OnConnected?.Invoke(packet.EndPoint);
@@ -203,12 +156,11 @@ namespace CriticalCrate.UDP
 
         internal override void OnDisconnectionPacket(EndPoint endpoint)
         {
-            if (!_mtu.TryGetValue(endpoint, out var mtu))
+            if (!_lastReceivedPacket.TryGetValue(endpoint, out var lastPacketTIme))
                 return;
             _socket.Send(CreateConnectionPacket(endpoint, PacketType.Disconnect));
-            OnDisconnected?.Invoke(endpoint);
             _lastReceivedPacket.Remove(endpoint);
-            _mtu.Remove(endpoint);
+            OnDisconnected?.Invoke(endpoint);
         }
 
         internal override void OnPacket(Packet packet)

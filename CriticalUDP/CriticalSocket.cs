@@ -61,11 +61,6 @@ namespace CriticalCrate.UDP
             Listen(new IPEndPoint(IPAddress.Any, port), maxClients);
         }
 
-        public int GetLowestConnectedMTU()
-        {
-            return _connectionManager.GetLowestConnectedMTU();
-        }
-
         public bool Pool(out Packet packet, out int eventsLeft)
         {
             PingManager.Update();
@@ -151,7 +146,7 @@ namespace CriticalCrate.UDP
             
             if (isUnreliable)
             {
-                if (size + UnreliableChannel.UnreliableHeaderSize >= _connectionManager.GetLowestConnectedMTU())
+                if (size + UnreliableChannel.UnreliableHeaderSize >= _socket.MTU)
                     Console.WriteLine("Packet size bigger than MTU!");
                 _unreliableChannel.Send(endPoint, data, offset, size);
                 return;
@@ -167,9 +162,9 @@ namespace CriticalCrate.UDP
             Send(_serverEndpoint, data, offset, size, sendMode);
         }
 
-        private ReliableChannel CreateChannel(UDPSocket socket, int mtu)
+        private ReliableChannel CreateChannel(UDPSocket socket)
         {
-            var channel = new ReliableChannel(socket, mtu);
+            var channel = new ReliableChannel(socket);
             channel.OnPacketReceived += OnReliablePacketReceived;
             return channel;
         }
@@ -184,7 +179,7 @@ namespace CriticalCrate.UDP
 
         private void HandleConnected(EndPoint endPoint)
         {
-            var newChannel = CreateChannel(_socket, _connectionManager.GetMTU(endPoint));
+            var newChannel = CreateChannel(_socket);
             if (!_reliableChannels.TryAdd(endPoint, newChannel))
                 newChannel.Dispose();
             PingManager.OnConnected(endPoint);
