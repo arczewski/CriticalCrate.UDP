@@ -21,7 +21,7 @@ namespace CriticalCrate.UDP
         public IConnectionManager ConnectionManager => _connectionManager;
         private BaseConnectionManager _connectionManager;
 
-        private UDPSocket _socket;
+        private UDPAsyncSocket _asyncSocket;
         private UnreliableChannel _unreliableChannel;
         private Dictionary<EndPoint, ReliableChannel> _reliableChannels;
         private ConcurrentQueue<Packet> _pendingPackets;
@@ -37,21 +37,21 @@ namespace CriticalCrate.UDP
         public CriticalSocket(int timeoutMs = 10000)
         #endif
         {
-            _socket = new UDPSocket();
+            _asyncSocket = new UDPAsyncSocket();
             _timeoutMs = timeoutMs;
-            PingManager = new PingManager(_socket);
+            PingManager = new PingManager(_asyncSocket);
             _reliableChannels = new Dictionary<EndPoint, ReliableChannel>();
-            _unreliableChannel = new UnreliableChannel(_socket, PingManager);
+            _unreliableChannel = new UnreliableChannel(_asyncSocket, PingManager);
             _pendingPackets = new ConcurrentQueue<Packet>();
             _pendingReliable = new ConcurrentQueue<Packet>();
-            _socket.OnPacketReceived += OnPacketReceived;
+            _asyncSocket.OnPacketReceived += OnPacketReceived;
         }
 
         public void Listen(IPEndPoint endPoint, int maxClients = 1)
         {
             _serverEndpoint = endPoint;
-            _socket.Listen(endPoint);
-            _connectionManager = new ServerConnectionManager(_timeoutMs, maxClients, _socket);
+            _asyncSocket.Listen(endPoint);
+            _connectionManager = new ServerConnectionManager(_timeoutMs, maxClients, _asyncSocket);
             _connectionManager.OnConnected += HandleConnected;
             _connectionManager.OnDisconnected += HandleDisconnected;
         }
@@ -130,7 +130,7 @@ namespace CriticalCrate.UDP
             _isClient = true;
             Listen(new IPEndPoint(IPAddress.Any, 0));
             _serverEndpoint = endPoint;
-            _connectionManager = new ClientConnectionManager(_socket, _timeoutMs);
+            _connectionManager = new ClientConnectionManager(_asyncSocket, _timeoutMs);
             _connectionManager.OnConnected += HandleConnected;
             _connectionManager.OnDisconnected += HandleDisconnected;
             ((ClientConnectionManager)_connectionManager).Connect(endPoint, connectingTimeoutMs, onConnected);
@@ -146,7 +146,7 @@ namespace CriticalCrate.UDP
             
             if (isUnreliable)
             {
-                if (size + UnreliableChannel.UnreliableHeaderSize >= _socket.MTU)
+                if (size + UnreliableChannel.UnreliableHeaderSize >= _asyncSocket.MTU)
                     Console.WriteLine("Packet size bigger than MTU!");
                 _unreliableChannel.Send(endPoint, data, offset, size);
                 return;
@@ -162,9 +162,9 @@ namespace CriticalCrate.UDP
             Send(_serverEndpoint, data, offset, size, sendMode);
         }
 
-        private ReliableChannel CreateChannel(UDPSocket socket)
+        private ReliableChannel CreateChannel(UDPAsyncSocket asyncSocket)
         {
-            var channel = new ReliableChannel(socket);
+            var channel = new ReliableChannel(asyncSocket);
             channel.OnPacketReceived += OnReliablePacketReceived;
             return channel;
         }
@@ -179,7 +179,7 @@ namespace CriticalCrate.UDP
 
         private void HandleConnected(EndPoint endPoint)
         {
-            var newChannel = CreateChannel(_socket);
+            var newChannel = CreateChannel(_asyncSocket);
             if (!_reliableChannels.TryAdd(endPoint, newChannel))
                 newChannel.Dispose();
             PingManager.OnConnected(endPoint);
@@ -198,7 +198,7 @@ namespace CriticalCrate.UDP
 
         public void Dispose()
         {
-            _socket.Dispose();
+            _asyncSocket.Dispose();
         }
     }
 }

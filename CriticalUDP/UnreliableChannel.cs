@@ -6,12 +6,12 @@ namespace CriticalCrate.UDP
     public class UnreliableChannel
     {
         public const int UnreliableHeaderSize = 2;
-        private UDPSocket _socket;
+        private UDPAsyncSocket _asyncSocket;
         private PingManager _pingManager;
 
-        public UnreliableChannel(UDPSocket socket, PingManager pingManager)
+        public UnreliableChannel(UDPAsyncSocket asyncSocket, PingManager pingManager)
         {
-            _socket = socket;
+            _asyncSocket = asyncSocket;
             _pingManager = pingManager;
         }
 
@@ -23,7 +23,7 @@ namespace CriticalCrate.UDP
             packet.CopyFrom(data, offset, size, UnreliableHeaderSize);
             packet.Data[0] = (byte)PacketType.Unreliable;
             _pingManager.OnPacketSend(ref packet);
-            _socket.Send(packet);
+            _asyncSocket.Send(packet);
         }
     }
 }

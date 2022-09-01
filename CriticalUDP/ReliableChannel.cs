@@ -38,7 +38,7 @@ namespace CriticalCrate.UDP
         internal const int MaxParts = short.MaxValue / 2;
         public event Action<ReliableIncomingPacket> OnPacketReceived;
 
-        private UDPSocket _socket;
+        private UDPAsyncSocket _asyncSocket;
         private ConcurrentQueue<Packet> _sendQueue = new ConcurrentQueue<Packet>();
         private ConcurrentQueue<Packet> _receiveQueue = new ConcurrentQueue<Packet>();
 
@@ -51,12 +51,12 @@ namespace CriticalCrate.UDP
         private int _resendAfterMs = 300;
         private int _loopSequenceThreshold = 16;
 
-        public ReliableChannel(UDPSocket socket, int packetSendWindow = 60 * 1024)
+        public ReliableChannel(UDPAsyncSocket asyncSocket, int packetSendWindow = 60 * 1024)
         {
-            _socket = socket;
+            _asyncSocket = asyncSocket;
             _packetSendWindow = packetSendWindow;
-            _incomingPacket = new ReliableIncomingPacket(socket.MTU);
-            _outgoingPacket = new ReliableOutgoingPacket(socket.MTU);
+            _incomingPacket = new ReliableIncomingPacket(asyncSocket.MTU);
+            _outgoingPacket = new ReliableOutgoingPacket(asyncSocket.MTU);
         }
 
         public void Send(EndPoint endPoint, byte[] data, int offset, int size)
@@ -103,7 +103,7 @@ namespace CriticalCrate.UDP
                     sendWindow -= packetSlice.Position;
                     if (sendWindow < 0)
                         break;
-                    _socket.Send(packetSlice);
+                    _asyncSocket.Send(packetSlice);
                 }
             }
         }
@@ -136,13 +136,13 @@ namespace CriticalCrate.UDP
                 {
                     _incomingPacket.ReceiveSlice(packetType, packetSeq, packetSliceAck, packet);
                     if (!_incomingPacket.IsComplete()) return;
-                    _socket.Send(ReliableIncomingPacket.CreateSliceAckPacket(packet, ArrayPool<byte>.Shared));
+                    _asyncSocket.Send(ReliableIncomingPacket.CreateSliceAckPacket(packet, ArrayPool<byte>.Shared));
                     OnPacketReceived?.Invoke(_incomingPacket);
                     _incomingPacket.Reset();
                 }
                 else if (_incomingPacket.PacketSeq == -1 || oldPacket)
                 {
-                    _socket.Send(ReliableIncomingPacket.CreateSliceAckPacket(packet, ArrayPool<byte>.Shared));
+                    _asyncSocket.Send(ReliableIncomingPacket.CreateSliceAckPacket(packet, ArrayPool<byte>.Shared));
                 }
             }
         }

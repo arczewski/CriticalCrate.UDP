@@ -8,12 +8,12 @@ namespace CriticalCrate.UDP
 
     public class PingManager
     {
-        private UDPSocket _socket;
+        private UDPAsyncSocket _asyncSocket;
         private Dictionary<EndPoint, PingData> _trackedPings = new Dictionary<EndPoint, PingData>();
 
-        public PingManager(UDPSocket socket)
+        public PingManager(UDPAsyncSocket asyncSocket)
         {
-            _socket = socket;
+            _asyncSocket = asyncSocket;
         }
 
         public long GetPing(EndPoint endPoint)
@@ -53,7 +53,7 @@ namespace CriticalCrate.UDP
                 packet.Data[1] = receivedPacket.Data[1];
                 packet.Assign(receivedPacket.EndPoint);
                 packet.ForcePosition(2);
-                _socket.Send(packet);
+                _asyncSocket.Send(packet);
                 return;
             }
 
@@ -74,7 +74,7 @@ namespace CriticalCrate.UDP
                 packet.Assign(keyValue.Key);
                 packet.ForcePosition(2);
                 OnPacketSend(ref packet);
-                _socket.Send(packet);
+                _asyncSocket.Send(packet);
             }
         }
     }

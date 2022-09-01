@@ -10,7 +10,7 @@ namespace CriticalCrate.UDP
         public override event Action<EndPoint> OnConnected;
         public override event Action<EndPoint> OnDisconnected;
 
-        private UDPSocket _socket;
+        private UDPAsyncSocket _asyncSocket;
         private IPEndPoint _serverEndpoint;
         private int _timeOutMs = 10000;
         private DateTime _lastReceivedPacket;
@@ -18,9 +18,9 @@ namespace CriticalCrate.UDP
         private bool _isConnected;
         private int _connectingTimeoutMs = 100;
 
-        public ClientConnectionManager(UDPSocket socket, int timeOutMs = 1000)
+        public ClientConnectionManager(UDPAsyncSocket asyncSocket, int timeOutMs = 1000)
         {
-            _socket = socket;
+            _asyncSocket = asyncSocket;
             _timeOutMs = timeOutMs;
         }
 
@@ -60,7 +60,7 @@ namespace CriticalCrate.UDP
             }
 
             if (_lastReceivedPacket.AddMilliseconds(_timeOutMs) >= DateTime.Now) return;
-            _socket.Send(ServerConnectionManager.CreateConnectionPacket(_serverEndpoint, PacketType.Disconnect));
+            _asyncSocket.Send(ServerConnectionManager.CreateConnectionPacket(_serverEndpoint, PacketType.Disconnect));
             OnDisconnectionPacket(_serverEndpoint);
         }
 
@@ -75,7 +75,7 @@ namespace CriticalCrate.UDP
             _connectingTimeoutMs = connectTimeoutMs;
             _lastReceivedPacket = DateTime.Now;
             _serverEndpoint = endPoint;
-            _socket.Send(ServerConnectionManager.CreateConnectionPacket(endPoint, PacketType.Connect, _socket.MTU));
+            _asyncSocket.Send(ServerConnectionManager.CreateConnectionPacket(endPoint, PacketType.Connect, _asyncSocket.MTU));
         }
     }
 
@@ -103,15 +103,15 @@ namespace CriticalCrate.UDP
         public override event Action<EndPoint> OnDisconnected;
 
         private int _maxConnection;
-        private UDPSocket _socket;
+        private UDPAsyncSocket _asyncSocket;
         private Dictionary<EndPoint, DateTime> _lastReceivedPacket = new Dictionary<EndPoint, DateTime>();
         private List<EndPoint> _endPointsToDisconnect = new List<EndPoint>();
         private int _timeoutMs;
 
-        public ServerConnectionManager(int timeoutMs, int maxConnection, UDPSocket socket)
+        public ServerConnectionManager(int timeoutMs, int maxConnection, UDPAsyncSocket asyncSocket)
         {
             _maxConnection = maxConnection;
-            _socket = socket;
+            _asyncSocket = asyncSocket;
             _timeoutMs = timeoutMs;
         }
 
@@ -137,11 +137,11 @@ namespace CriticalCrate.UDP
         {
             if (_lastReceivedPacket.TryGetValue(packet.EndPoint, out var lastPacketTime))
             {
-                _socket.Send(CreateConnectionPacket(packet.EndPoint, PacketType.Connect, packet.Position));
+                _asyncSocket.Send(CreateConnectionPacket(packet.EndPoint, PacketType.Connect, packet.Position));
                 return;
             }
             _lastReceivedPacket.Add(packet.EndPoint, DateTime.Now);
-            _socket.Send(CreateConnectionPacket(packet.EndPoint, PacketType.Connect, packet.Position));
+            _asyncSocket.Send(CreateConnectionPacket(packet.EndPoint, PacketType.Connect, packet.Position));
             OnConnected?.Invoke(packet.EndPoint);
         }
 
@@ -158,7 +158,7 @@ namespace CriticalCrate.UDP
         {
             if (!_lastReceivedPacket.TryGetValue(endpoint, out var lastPacketTIme))
                 return;
-            _socket.Send(CreateConnectionPacket(endpoint, PacketType.Disconnect));
+            _asyncSocket.Send(CreateConnectionPacket(endpoint, PacketType.Disconnect));
             _lastReceivedPacket.Remove(endpoint);
             OnDisconnected?.Invoke(endpoint);
         }

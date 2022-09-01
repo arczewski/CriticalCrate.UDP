@@ -7,8 +7,16 @@ using System.Threading;
 
 namespace CriticalCrate.UDP
 {
+    public interface ISocket
+    {
+        event OnPacketReceived OnPacketReceived;
+        void Listen(ushort port);
+        void Listen(IPEndPoint endPoint);
+        void Send(Packet packet);
+    }
+    
     public delegate void OnPacketReceived(Packet packet);
-    public class UDPSocket : IDisposable
+    public class UDPAsyncSocket : ISocket, IDisposable
     {
         public int MTU => 508; //https://stackoverflow.com/questions/1098897/what-is-the-largest-safe-udp-packet-size-on-the-internet
         public event OnPacketReceived OnPacketReceived;
@@ -22,8 +30,7 @@ namespace CriticalCrate.UDP
         private Thread _sendThread;
         private readonly CancellationTokenSource _sendThreadCancellation;
         
-
-        public UDPSocket()
+        public UDPAsyncSocket()
         {
             _sendSemaphore = new SemaphoreSlim(1, 1);
             _packets = new BlockingCollection<Packet>();
@@ -48,11 +55,6 @@ namespace CriticalCrate.UDP
             SetupSocketEvents();
             if (!_listenSocket.ReceiveFromAsync(_readEvent))
                 ProcessRead(_readEvent);
-        }
-
-        public void Client(ushort port = 0)
-        {
-            Listen(new IPEndPoint(IPAddress.Any, port));
         }
 
         private async void ProcessSendQueue(CancellationToken cancellationToken)
