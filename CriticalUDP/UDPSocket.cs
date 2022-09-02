@@ -17,14 +17,16 @@ namespace CriticalCrate.UDP
         private readonly BlockingCollection<Packet> _sendQueue;
         private Thread _sendThread;
         private Thread _readThread;
+        private CancellationTokenSource _cancellationTokenSource;
 
         public UDPSocket()
         {
+            _cancellationTokenSource = new CancellationTokenSource();
             _sendQueue = new BlockingCollection<Packet>();
-            _sendThread = new Thread(ProcessSendQueue);
+            _sendThread = new Thread(()=>ProcessSendQueue(_cancellationTokenSource.Token));
             _sendThread.Start();
 
-            _readThread = new Thread(ReadSocketData);
+            _readThread = new Thread(()=>ReadSocketData(_cancellationTokenSource.Token));
             _readThread.Start();
 
             _listenSocket?.Dispose();
@@ -44,9 +46,9 @@ namespace CriticalCrate.UDP
                 _listenSocket.DontFragment = true;
         }
 
-        private void ProcessSendQueue()
+        private void ProcessSendQueue(CancellationToken cancellationToken)
         {
-            while (_sendQueue.TryTake(out var packet))
+            while (!cancellationToken.IsCancellationRequested && _sendQueue.TryTake(out var packet))
             {
                 _listenSocket.SendTo(packet.Data, 0, packet.Position, SocketFlags.None, packet.EndPoint);
                 if(!packet.BlockSendDispose)
@@ -55,13 +57,15 @@ namespace CriticalCrate.UDP
             _sendQueue.Dispose();
         }
         
-        private void ReadSocketData()
+        private void ReadSocketData(CancellationToken cancellationToken)
         {
             byte[] buffer = new byte[MTU];
-            while (true) //add cancellation token
+            EndPoint ipEndPoint = new IPEndPoint(IPAddress.Any, 0); // pool - allocation
+            while (!cancellationToken.IsCancellationRequested) //add cancellation token
             {
-                EndPoint ipEndPoint = new IPEndPoint(IPAddress.Any, 0); // pool - allocation
                 int bytesCount = _listenSocket.ReceiveFrom(buffer, ref ipEndPoint);
+                if (cancellationToken.IsCancellationRequested)
+                    break;
                 var packet = new Packet(bytesCount, ArrayPool<byte>.Shared);
                 packet.Assign((IPEndPoint)ipEndPoint);
                 packet.CopyFrom(buffer, 0, bytesCount);
@@ -76,6 +80,8 @@ namespace CriticalCrate.UDP
 
         public void Dispose()
         {
+            _cancellationTokenSource.Cancel();
+            _listenSocket.Shutdown(SocketShutdown.Both);
             _sendQueue.CompleteAdding();
         }
     }
