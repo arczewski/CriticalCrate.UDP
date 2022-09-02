@@ -12,4 +12,8 @@
         <AssemblyVersion>0.0.2</AssemblyVersion>
     </PropertyGroup>
 
+    <ItemGroup>
+      <Folder Include="External" />
+    </ItemGroup>
+
 </Project>
