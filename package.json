@@ -1,7 +1,7 @@
 {
     "name": "com.criticalcrate.criticaludp",
     "displayName": "CriticalUDP",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "unity": "2018.3",
     "category": "Unity",
     "dependencies": {}
