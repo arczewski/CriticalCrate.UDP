@@ -1,8 +1,9 @@
-﻿
+﻿using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 
 namespace CriticalCrate.UDP
 {
