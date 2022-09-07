@@ -82,7 +82,6 @@ namespace CriticalCrate.UDP
         public void Dispose()
         {
             _cancellationTokenSource.Cancel();
-            _listenSocket.Shutdown(SocketShutdown.Both);
             _listenSocket.Dispose();
             _sendQueue.CompleteAdding();
         }

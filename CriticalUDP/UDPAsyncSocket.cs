@@ -133,7 +133,6 @@ namespace CriticalCrate.UDP
 
         public void Dispose()
         {
-            _listenSocket.Shutdown(SocketShutdown.Both);
             _listenSocket.Dispose();
             _sendThreadCancellation.Cancel();
         }
