@@ -43,19 +43,19 @@ namespace CriticalCrate.UDP
         private ConcurrentQueue<Packet> _receiveQueue = new ConcurrentQueue<Packet>();
 
         private ReliableOutgoingPacket _outgoingPacket;
-        private ReliableIncomingPacket _incomingPacket;
+        private ReliableIncomingPacket _currentIncomingPacket;
 
         private byte _packetSeq = 0;
         private readonly int _packetSendWindow;
         private DateTime _lastAckDate;
         private int _resendAfterMs = 300;
-        private int _loopSequenceThreshold = 16;
 
         public ReliableChannel(UDPAsyncSocket asyncSocket, int packetSendWindow = 60 * 1024)
         {
             _asyncSocket = asyncSocket;
             _packetSendWindow = packetSendWindow;
-            _incomingPacket = new ReliableIncomingPacket(asyncSocket.MTU);
+            _currentIncomingPacket = new ReliableIncomingPacket(asyncSocket.MTU);
+            _currentIncomingPacket.New(0);
             _outgoingPacket = new ReliableOutgoingPacket(asyncSocket.MTU);
         }
 
@@ -87,10 +87,11 @@ namespace CriticalCrate.UDP
 
                 if (_outgoingPacket.IsCompleted)
                 {
-                    packet.Dispose();
                     _sendQueue.TryDequeue(out packet);
+                    packet.Dispose();
                     _outgoingPacket.Reset();
                     _lastAckDate -= TimeSpan.FromMilliseconds(_resendAfterMs);
+                    sendWindow = _packetSendWindow;
                     continue;
                 }
 
@@ -125,31 +126,36 @@ namespace CriticalCrate.UDP
             }
             else if ((packetType & PacketType.Reliable) == PacketType.Reliable)
             {
-                bool oldPacket = _incomingPacket.PacketSeq - packetSeq < _loopSequenceThreshold && _incomingPacket.PacketSeq != packetSeq;
-                if ((_incomingPacket.PacketSeq != -1 || _incomingPacket.IsComplete()) &&
-                    (_incomingPacket.PacketSeq < packetSeq || !oldPacket))
+                bool oldPacket = packetSeq < _currentIncomingPacket.PacketSeq ||
+                                 (_currentIncomingPacket.PacketSeq == 0 && packetSeq == byte.MaxValue);
+                if (oldPacket)
                 {
-                    _incomingPacket.New(packetSeq);
+                    _asyncSocket.Send(ReliableIncomingPacket.CreateSliceAckPacket(packet, packetSliceAck, ArrayPool<byte>.Shared));
                 }
-
-                if (_incomingPacket.PacketSeq == packetSeq)
+                else if (_currentIncomingPacket.PacketSeq == packetSeq)
                 {
-                    _incomingPacket.ReceiveSlice(packetType, packetSeq, packetSliceAck, packet);
-                    if (!_incomingPacket.IsComplete()) return;
-                    _asyncSocket.Send(ReliableIncomingPacket.CreateSliceAckPacket(packet, ArrayPool<byte>.Shared));
-                    OnPacketReceived?.Invoke(_incomingPacket);
-                    _incomingPacket.Reset();
-                }
-                else if (_incomingPacket.PacketSeq == -1 || oldPacket)
-                {
-                    _asyncSocket.Send(ReliableIncomingPacket.CreateSliceAckPacket(packet, ArrayPool<byte>.Shared));
+                    if(_currentIncomingPacket.ReceiveSlice(packetType, packetSeq, packetSliceAck, packet, out short ack))
+                        _asyncSocket.Send(ReliableIncomingPacket.CreateSliceAckPacket(packet, ack, ArrayPool<byte>.Shared));
+                    if (!_currentIncomingPacket.IsComplete()) return;
+                    try
+                    {
+                        OnPacketReceived?.Invoke(_currentIncomingPacket);
+                    }
+                    catch
+                    {
+                        throw;
+                    }
+                    finally
+                    {
+                        _currentIncomingPacket.New((byte)(packetSeq + 1));
+                    }
                 }
             }
         }
 
         internal static void AddData(ref Packet packet, byte[] buffer, int offset, int size)
         {
-            packet.CopyFrom(buffer, offset, size, ReliableChannelHeaderSize);
+            packet.CopyFrom(buffer, offset, size, packet.Position);
         }
 
         internal static void AddHeader(ref Packet packet, byte packetSeq, short packetPart, PacketType packetType)
@@ -176,7 +182,7 @@ namespace CriticalCrate.UDP
         public void Dispose()
         {
             _outgoingPacket.Dispose();
-            _incomingPacket.Dispose();
+            _currentIncomingPacket.Dispose();
         }
     }
 
@@ -187,14 +193,12 @@ namespace CriticalCrate.UDP
         private short _sliceAck;
         public short PacketSeq { get; private set; }
 
-        private int _highestReceivedSeq = 0;
-
         public ReliableIncomingPacket(int maxPacketSize)
         {
             _packetSlices = new Packet[ReliableChannel.MaxParts];
             PacketSeq = -1;
-            _sliceCount = 0;
-            _sliceAck = 0;
+            _sliceCount = ReliableChannel.MaxParts;
+            _sliceAck = -1;
         }
 
         public void New(byte seq)
@@ -204,26 +208,28 @@ namespace CriticalCrate.UDP
         }
 
         //burst enabled?
-        public void ReceiveSlice(PacketType type, byte packetSeq, short packetSliceSeq, Packet packet)
+        public bool ReceiveSlice(PacketType type, byte packetSeq, short packetSliceSeq, Packet packet, out short ack)
         {
+            ack = 0;
             if (packetSeq != PacketSeq)
-                return;
+                return false;
             if (packetSliceSeq < _sliceAck)
-                return;
-            int slice = packetSliceSeq + 1;
+                return false;
             if ((type & PacketType.ReliablePacketEnd) == PacketType.ReliablePacketEnd)
-                _sliceCount = slice;
+                _sliceCount = packetSliceSeq + 1;
             _packetSlices[packetSliceSeq] = packet;
-            if (_highestReceivedSeq < slice)
-                _highestReceivedSeq = slice;
-            var tempSliceSeq = packetSliceSeq;
-            while (tempSliceSeq == _sliceAck)
+            while (packetSliceSeq == _sliceAck + 1)
             {
                 _sliceAck++;
-                tempSliceSeq = _highestReceivedSeq > _sliceAck && _packetSlices[_sliceAck].Position != 0
-                    ? _sliceAck
-                    : tempSliceSeq; //check if next act already present
+                while (_packetSlices[_sliceAck + 1].Position != 0)
+                    _sliceAck++;
             }
+
+            if (_sliceAck == -1)
+                return false;
+
+            ack = _sliceAck;
+            return true;
         }
 
         public void Dispose()
@@ -231,30 +237,31 @@ namespace CriticalCrate.UDP
             Reset();
         }
 
-        public static Packet CreateSliceAckPacket(Packet packet, ArrayPool<byte> pool)
+        public static Packet CreateSliceAckPacket(Packet packet, short ack, ArrayPool<byte> pool)
         {
             Packet ackPacket = new Packet(ReliableChannel.ReliableChannelHeaderSize, pool);
             ackPacket.Assign(packet.EndPoint);
-            ReliableChannel.ReadHeader(packet, out byte packetSeq, out short ack, out PacketType type);
+            ReliableChannel.ReadHeader(packet, out byte packetSeq, out short _, out PacketType type);
             ReliableChannel.AddHeader(ref ackPacket, packetSeq, ack, PacketType.ReliableAck);
             return ackPacket;
         }
 
         public bool IsComplete()
         {
-            return _sliceAck == _sliceCount;
+            return _sliceAck + 1 == _sliceCount;
         }
 
         public void Reset()
         {
-            for (int i = 0; i < _highestReceivedSeq; i++)
+            for (int i = 0;; i++)
             {
+                if (_packetSlices[i].Position == 0)
+                    break;
                 _packetSlices[i].Dispose();
             }
-
-            PacketSeq = -1;
-            _sliceCount = 0;
-            _sliceAck = 0;
+            
+            _sliceCount = ReliableChannel.MaxParts;
+            _sliceAck = -1;
         }
 
         //burst enabled?
