@@ -1,19 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netstandard2.1</TargetFramework>
+        <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <AssemblyName>CriticalCrate.UDP</AssemblyName>
-        <RootNamespace>CriticalCrate.UDP</RootNamespace>
+        <AssemblyName>CriticalCrate.ReliableUdp</AssemblyName>
+        <RootNamespace>CriticalCrate.ReliableUdp</RootNamespace>
         <LangVersion>default</LangVersion>
         <PackageVersion>0.0.2</PackageVersion>
         <AssemblyVersion>0.0.2</AssemblyVersion>
     </PropertyGroup>
-
-    <ItemGroup>
-      <Folder Include="External" />
-    </ItemGroup>
 
 </Project>
