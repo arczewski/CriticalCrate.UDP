@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CriticalCrate.ReliableUdp", "CriticalCrate.ReliableUdp\CriticalCrate.ReliableUdp.csproj", "{44F96D93-9422-4C02-A4EE-3665462F7A05}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CriticalCrate.ReliableUdp.Tests", "CriticalCrate.ReliableUdp.Tests\CriticalCrate.ReliableUdp.Tests.csproj", "{B6A97436-B787-4CD6-BB6D-4B99146E0CCF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{44F96D93-9422-4C02-A4EE-3665462F7A05}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{44F96D93-9422-4C02-A4EE-3665462F7A05}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{44F96D93-9422-4C02-A4EE-3665462F7A05}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{44F96D93-9422-4C02-A4EE-3665462F7A05}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B6A97436-B787-4CD6-BB6D-4B99146E0CCF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B6A97436-B787-4CD6-BB6D-4B99146E0CCF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B6A97436-B787-4CD6-BB6D-4B99146E0CCF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B6A97436-B787-4CD6-BB6D-4B99146E0CCF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
